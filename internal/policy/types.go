@@ -5,8 +5,9 @@ import "github.com/AdmissionVet/admissionvet/internal/input"
 // GeneratedPolicy holds all the Kubernetes resources generated for a single rule.
 type GeneratedPolicy struct {
 	RuleID             string
-	ConstraintTemplate string // ConstraintTemplate YAML
-	Constraint         string // Constraint instance YAML
+	ConstraintTemplate string // ConstraintTemplate YAML (Gatekeeper)
+	Constraint         string // Constraint instance YAML (Gatekeeper)
+	ClusterPolicy      string // Kyverno ClusterPolicy YAML
 	NetworkPolicy      string // NetworkPolicy YAML (NetworkVet rules only)
 }
 

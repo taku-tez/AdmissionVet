@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	policy.Register(&rbClusterAdmin{})
+	policy.Register("gatekeeper", &rbClusterAdmin{})
 }
 
 type rbClusterAdmin struct{}

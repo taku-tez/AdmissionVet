@@ -45,6 +45,16 @@ func WriteKustomize(policies []*policy.GeneratedPolicy, outputDir string) error 
 			fmt.Printf("  wrote %s\n", path)
 		}
 
+		if p.ClusterPolicy != "" {
+			fname := ruleID + "-clusterpolicy.yaml"
+			path := filepath.Join(baseDir, fname)
+			if err := os.WriteFile(path, []byte(p.ClusterPolicy), 0o644); err != nil {
+				return fmt.Errorf("writing ClusterPolicy for %s: %w", p.RuleID, err)
+			}
+			resources = append(resources, fname)
+			fmt.Printf("  wrote %s\n", path)
+		}
+
 		if p.NetworkPolicy != "" {
 			fname := ruleID + "-networkpolicy.yaml"
 			path := filepath.Join(baseDir, fname)

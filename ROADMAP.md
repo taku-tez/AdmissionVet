@@ -42,16 +42,16 @@ Kubernetes Admission Webhook として適用することでリアルタイムブ
 **Goal:** Kyverno の ClusterPolicy/Policy を自動生成する。
 
 ### Policy 生成
-- [ ] `validate` ルール: マニフェスト検証 (ManifestVet 相当)
-- [ ] `mutate` ルール: デフォルト値の自動補完
-  - `readOnlyRootFilesystem: true` を未設定コンテナに自動付与
-  - `automountServiceAccountToken: false` の自動設定
-  - `imagePullPolicy: Always` の強制
-- [ ] `generate` ルール: namespace 作成時に NetworkPolicy を自動生成
-- [ ] `verify-images` ルール: Cosign 署名検証ポリシー生成
+- [x] `validate` ルール: マニフェスト検証 (ManifestVet 相当)
+- [x] `mutate` ルール: デフォルト値の自動補完
+  - `readOnlyRootFilesystem: true` を未設定コンテナに自動付与 (MV1007-MUTATE)
+  - `automountServiceAccountToken: false` の自動設定 (MV-MUTATE-AUTOMOUNT)
+  - `imagePullPolicy: Always` の強制 (MV-MUTATE-IMAGEPULL)
+- [x] `generate` ルール: namespace 作成時に NetworkPolicy を自動生成 (NV1001)
+- [x] `verify-images` ルール: Cosign 署名検証ポリシー生成 (IV1001)
 
 ### 差分モード
-- [ ] 既存ポリシーとの差分確認 (`--diff`)
+- [x] 既存ポリシーとの差分確認 (`--diff`)
 - [ ] ドライラン評価 (`kyverno apply --dry-run`)
 - [ ] 既存クラスターリソースへの影響シミュレーション
 

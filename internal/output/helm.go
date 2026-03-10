@@ -30,9 +30,10 @@ func WriteHelm(policies []*policy.GeneratedPolicy, outputDir string) error {
 	templateDir := filepath.Join(helmDir, "templates")
 	ctDir := filepath.Join(templateDir, "constrainttemplates")
 	cDir := filepath.Join(templateDir, "constraints")
+	cpDir := filepath.Join(templateDir, "clusterpolicies")
 	npDir := filepath.Join(templateDir, "networkpolicies")
 
-	for _, dir := range []string{ctDir, cDir, npDir} {
+	for _, dir := range []string{ctDir, cDir, cpDir, npDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("creating helm directory %s: %w", dir, err)
 		}
@@ -60,6 +61,14 @@ func WriteHelm(policies []*policy.GeneratedPolicy, outputDir string) error {
 			path := filepath.Join(cDir, ruleID+"-constraint.yaml")
 			if err := os.WriteFile(path, []byte(p.Constraint), 0o644); err != nil {
 				return fmt.Errorf("writing Constraint for %s: %w", p.RuleID, err)
+			}
+			fmt.Printf("  wrote %s\n", path)
+		}
+
+		if p.ClusterPolicy != "" {
+			path := filepath.Join(cpDir, ruleID+"-clusterpolicy.yaml")
+			if err := os.WriteFile(path, []byte(p.ClusterPolicy), 0o644); err != nil {
+				return fmt.Errorf("writing ClusterPolicy for %s: %w", p.RuleID, err)
 			}
 			fmt.Printf("  wrote %s\n", path)
 		}

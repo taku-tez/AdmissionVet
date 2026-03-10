@@ -35,6 +35,14 @@ func WriteYAML(policies []*policy.GeneratedPolicy, outputDir string) error {
 			fmt.Printf("  wrote %s\n", path)
 		}
 
+		if p.ClusterPolicy != "" {
+			path := filepath.Join(outputDir, ruleID+"-clusterpolicy.yaml")
+			if err := os.WriteFile(path, []byte(p.ClusterPolicy), 0o644); err != nil {
+				return fmt.Errorf("writing ClusterPolicy for %s: %w", p.RuleID, err)
+			}
+			fmt.Printf("  wrote %s\n", path)
+		}
+
 		if p.NetworkPolicy != "" {
 			path := filepath.Join(outputDir, ruleID+"-networkpolicy.yaml")
 			if err := os.WriteFile(path, []byte(p.NetworkPolicy), 0o644); err != nil {

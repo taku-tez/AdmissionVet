@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	policy.Register(&rb1002{})
+	policy.Register("gatekeeper", &rb1002{})
 }
 
 type rb1002 struct{}

@@ -2,20 +2,28 @@ package policy
 
 import "fmt"
 
-var globalRegistry = make(map[string]Generator)
+// registries holds per-engine generator maps: engine → ruleID → Generator.
+var registries = make(map[string]map[string]Generator)
 
-// Register adds a Generator to the global registry.
-// Panics if a Generator with the same rule ID is already registered.
-func Register(g Generator) {
-	id := g.RuleID()
-	if _, exists := globalRegistry[id]; exists {
-		panic(fmt.Sprintf("policy generator already registered for rule ID: %s", id))
+// Register adds a Generator to the registry for the given engine.
+// Panics if a Generator with the same rule ID is already registered for that engine.
+func Register(engine string, g Generator) {
+	if registries[engine] == nil {
+		registries[engine] = make(map[string]Generator)
 	}
-	globalRegistry[id] = g
+	id := g.RuleID()
+	if _, exists := registries[engine][id]; exists {
+		panic(fmt.Sprintf("policy generator already registered for engine=%s rule=%s", engine, id))
+	}
+	registries[engine][id] = g
 }
 
-// Get retrieves a Generator by rule ID.
-func Get(ruleID string) (Generator, bool) {
-	g, ok := globalRegistry[ruleID]
+// Get retrieves a Generator by engine and rule ID.
+func Get(engine, ruleID string) (Generator, bool) {
+	m, ok := registries[engine]
+	if !ok {
+		return nil, false
+	}
+	g, ok := m[ruleID]
 	return g, ok
 }
