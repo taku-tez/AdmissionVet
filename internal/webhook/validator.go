@@ -119,7 +119,7 @@ func checkCommon(configName, kind string, wh webhookEntry) []Finding {
 	if strings.EqualFold(wh.FailurePolicy, "Ignore") {
 		findings = append(findings, Finding{
 			RuleID:   "AV3001",
-			Severity: SeverityError,
+			Severity: SeverityHigh,
 			Webhook:  label,
 			Kind:     kind,
 			Message: fmt.Sprintf(
@@ -132,7 +132,7 @@ func checkCommon(configName, kind string, wh webhookEntry) []Finding {
 	if wh.TimeoutSeconds != nil && *wh.TimeoutSeconds < 10 {
 		findings = append(findings, Finding{
 			RuleID:   "AV3002",
-			Severity: SeverityWarning,
+			Severity: SeverityMedium,
 			Webhook:  label,
 			Kind:     kind,
 			Message: fmt.Sprintf(
@@ -145,7 +145,7 @@ func checkCommon(configName, kind string, wh webhookEntry) []Finding {
 	if !excludesKubeSystem(wh.NamespaceSelector) {
 		findings = append(findings, Finding{
 			RuleID:   "AV3003",
-			Severity: SeverityWarning,
+			Severity: SeverityMedium,
 			Webhook:  label,
 			Kind:     kind,
 			Message: fmt.Sprintf(
@@ -171,7 +171,7 @@ func checkReinvocation(configName string, wh webhookEntry) []Finding {
 	if strings.EqualFold(wh.ReinvocationPolicy, "IfNeeded") {
 		findings = append(findings, Finding{
 			RuleID:   "AV4001",
-			Severity: SeverityWarning,
+			Severity: SeverityLow,
 			Webhook:  label,
 			Kind:     "MutatingWebhookConfiguration",
 			Message: fmt.Sprintf(
@@ -248,7 +248,7 @@ func checkCertExpiry(webhookLabel, kind, caBundle string) []Finding {
 		if daysLeft <= 0 {
 			findings = append(findings, Finding{
 				RuleID:   "AV3005",
-				Severity: SeverityError,
+				Severity: SeverityCritical,
 				Webhook:  webhookLabel,
 				Kind:     kind,
 				Message:  fmt.Sprintf("TLS certificate '%s' has EXPIRED (expired: %s)", label, cert.NotAfter.Format("2006-01-02")),
@@ -256,7 +256,7 @@ func checkCertExpiry(webhookLabel, kind, caBundle string) []Finding {
 		} else if daysLeft <= 30 {
 			findings = append(findings, Finding{
 				RuleID:   "AV3005",
-				Severity: SeverityWarning,
+				Severity: SeverityHigh,
 				Webhook:  webhookLabel,
 				Kind:     kind,
 				Message:  fmt.Sprintf("TLS certificate '%s' expires in %d days (%s)", label, daysLeft, cert.NotAfter.Format("2006-01-02")),
@@ -280,7 +280,7 @@ func checkCertChain(webhookLabel, kind string, certs []*x509.Certificate) []Find
 			if c.Issuer.String() == c.Subject.String() {
 				findings = append(findings, Finding{
 					RuleID:   "AV3006",
-					Severity: SeverityWarning,
+					Severity: SeverityLow,
 					Webhook:  webhookLabel,
 					Kind:     kind,
 					Message:  fmt.Sprintf("webhook '%s' uses a self-signed TLS certificate — consider using a proper CA", webhookLabel),
@@ -309,7 +309,7 @@ func checkCertChain(webhookLabel, kind string, certs []*x509.Certificate) []Find
 	if _, err := certs[0].Verify(opts); err != nil {
 		findings = append(findings, Finding{
 			RuleID:   "AV3006",
-			Severity: SeverityError,
+			Severity: SeverityHigh,
 			Webhook:  webhookLabel,
 			Kind:     kind,
 			Message:  fmt.Sprintf("webhook '%s' TLS certificate chain is invalid: %v", webhookLabel, err),

@@ -45,7 +45,7 @@ func newWebhookValidateCommand() *cobra.Command {
 Examples:
   admissionvet webhook validate --from webhook.yaml
   admissionvet webhook validate --cluster
-  admissionvet webhook validate --cluster --severity error
+  admissionvet webhook validate --cluster --severity high
   admissionvet webhook validate --cluster --output json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWebhookValidate(fromFile, cluster, severity, output)
@@ -54,7 +54,7 @@ Examples:
 
 	cmd.Flags().StringVarP(&fromFile, "from", "f", "", "Path to webhook configuration YAML")
 	cmd.Flags().BoolVar(&cluster, "cluster", false, "Fetch configurations from the current cluster via kubectl")
-	cmd.Flags().StringVar(&severity, "severity", "", "Filter findings: error|warning|info")
+	cmd.Flags().StringVar(&severity, "severity", "", "Filter findings: critical|high|medium|low|info")
 	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json")
 
 	return cmd
@@ -101,11 +101,15 @@ func runWebhookValidate(fromFile string, cluster bool, severity string, output s
 	}
 	w.Flush()
 
-	errCount := countBySeverity(findings, webhook.SeverityError)
-	warnCount := countBySeverity(findings, webhook.SeverityWarning)
-	fmt.Printf("\n%d error(s), %d warning(s)\n", errCount, warnCount)
+	criticalCount := countBySeverity(findings, webhook.SeverityCritical)
+	highCount := countBySeverity(findings, webhook.SeverityHigh)
+	mediumCount := countBySeverity(findings, webhook.SeverityMedium)
+	lowCount := countBySeverity(findings, webhook.SeverityLow)
+	infoCount := countBySeverity(findings, webhook.SeverityInfo)
+	fmt.Printf("\ncritical: %d, high: %d, medium: %d, low: %d, info: %d\n",
+		criticalCount, highCount, mediumCount, lowCount, infoCount)
 
-	if errCount > 0 {
+	if criticalCount > 0 || highCount > 0 {
 		os.Exit(1)
 	}
 	return nil
@@ -120,10 +124,13 @@ type jsonWebhookFinding struct {
 }
 
 type jsonWebhookOutput struct {
-	Summary  struct {
+	Summary struct {
 		Total    int `json:"total"`
-		Errors   int `json:"errors"`
-		Warnings int `json:"warnings"`
+		Critical int `json:"critical"`
+		High     int `json:"high"`
+		Medium   int `json:"medium"`
+		Low      int `json:"low"`
+		Info     int `json:"info"`
 	} `json:"summary"`
 	Findings []jsonWebhookFinding `json:"findings"`
 }
@@ -132,19 +139,25 @@ func writeWebhookJSON(findings []webhook.Finding) error {
 	out := jsonWebhookOutput{}
 	out.Findings = make([]jsonWebhookFinding, 0, len(findings))
 	for _, f := range findings {
-		sev := strings.ToLower(string(f.Severity))
 		out.Findings = append(out.Findings, jsonWebhookFinding{
 			RuleID:   f.RuleID,
-			Severity: sev,
+			Severity: string(f.Severity),
 			Webhook:  f.Webhook,
 			Kind:     f.Kind,
 			Message:  f.Message,
 		})
 		out.Summary.Total++
-		if f.Severity == webhook.SeverityError {
-			out.Summary.Errors++
-		} else {
-			out.Summary.Warnings++
+		switch f.Severity {
+		case webhook.SeverityCritical:
+			out.Summary.Critical++
+		case webhook.SeverityHigh:
+			out.Summary.High++
+		case webhook.SeverityMedium:
+			out.Summary.Medium++
+		case webhook.SeverityLow:
+			out.Summary.Low++
+		case webhook.SeverityInfo:
+			out.Summary.Info++
 		}
 	}
 	enc := json.NewEncoder(os.Stdout)
@@ -202,9 +215,11 @@ func runWebhookTest(fromFile string) error {
 
 func filterFindings(findings []webhook.Finding, minSev webhook.Severity) []webhook.Finding {
 	rank := map[webhook.Severity]int{
-		webhook.SeverityError:   3,
-		webhook.SeverityWarning: 2,
-		webhook.SeverityInfo:    1,
+		webhook.SeverityCritical: 5,
+		webhook.SeverityHigh:     4,
+		webhook.SeverityMedium:   3,
+		webhook.SeverityLow:      2,
+		webhook.SeverityInfo:     1,
 	}
 	min := rank[minSev]
 	var result []webhook.Finding

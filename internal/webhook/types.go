@@ -4,9 +4,11 @@ package webhook
 type Severity string
 
 const (
-	SeverityError   Severity = "error"
-	SeverityWarning Severity = "warning"
-	SeverityInfo    Severity = "info"
+	SeverityCritical Severity = "CRITICAL"
+	SeverityHigh     Severity = "HIGH"
+	SeverityMedium   Severity = "MEDIUM"
+	SeverityLow      Severity = "LOW"
+	SeverityInfo     Severity = "INFO"
 )
 
 // Finding represents a single issue found in a webhook configuration.
