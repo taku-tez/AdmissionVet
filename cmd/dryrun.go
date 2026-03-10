@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -10,8 +11,6 @@ import (
 
 	"github.com/AdmissionVet/admissionvet/internal/dryrun"
 )
-
-var _ = strings.Join // ensure strings is used
 
 // NewDryrunCommand returns the `admissionvet dryrun` command.
 func NewDryrunCommand() *cobra.Command {
@@ -47,7 +46,6 @@ Examples:
 }
 
 func runDryrun(manifestArgs, policyArgs []string) error {
-	// Expand directories to file lists.
 	manifestFiles, err := expandPaths(manifestArgs)
 	if err != nil {
 		return fmt.Errorf("expanding manifest paths: %w", err)
@@ -81,9 +79,12 @@ func runDryrun(manifestArgs, policyArgs []string) error {
 		return nil
 	}
 
-	// Group by namespace.
 	summary := result.Summary()
-	namespaces := sortedKeys(summary)
+	namespaces := make([]string, 0, len(summary))
+	for ns := range summary {
+		namespaces = append(namespaces, ns)
+	}
+	sort.Strings(namespaces)
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, ns := range namespaces {
@@ -92,14 +93,12 @@ func runDryrun(manifestArgs, policyArgs []string) error {
 		fmt.Fprintln(w, "  ACTION\tKIND\tNAME\tPOLICY\tMESSAGE")
 		fmt.Fprintln(w, "  ------\t----\t----\t------\t-------")
 		for _, h := range hits {
-			action := strings.ToUpper(h.Action)
 			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n",
-				action, h.Resource.Kind, h.Resource.Name, h.Policy, h.Message)
+				strings.ToUpper(h.Action), h.Resource.Kind, h.Resource.Name, h.Policy, h.Message)
 		}
 	}
 	w.Flush()
 
-	// Rollout impact section.
 	if len(result.RolloutImpacts) > 0 {
 		fmt.Printf("\n--- Rollout Impact ---\n")
 		fmt.Printf("The following Deployments/StatefulSets would fail to roll out:\n\n")
@@ -107,14 +106,15 @@ func runDryrun(manifestArgs, policyArgs []string) error {
 		fmt.Fprintln(w2, "KIND\tNAMESPACE\tNAME\tREPLICAS\tBLOCKED BY")
 		fmt.Fprintln(w2, "----\t---------\t----\t--------\t----------")
 		for _, impact := range result.RolloutImpacts {
-			policies := make(map[string]bool)
-			for _, h := range impact.PolicyHits {
-				policies[h.Policy] = true
-			}
+			seen := make(map[string]bool)
 			var pnames []string
-			for p := range policies {
-				pnames = append(pnames, p)
+			for _, h := range impact.PolicyHits {
+				if !seen[h.Policy] {
+					seen[h.Policy] = true
+					pnames = append(pnames, h.Policy)
+				}
 			}
+			sort.Strings(pnames)
 			fmt.Fprintf(w2, "%s\t%s\t%s\t%d\t%s\n",
 				impact.Resource.Kind,
 				impact.Resource.Namespace,
@@ -126,7 +126,6 @@ func runDryrun(manifestArgs, policyArgs []string) error {
 		w2.Flush()
 	}
 
-	// Migration plan suggestion.
 	fmt.Printf("\n--- Migration Plan ---\n")
 	fmt.Printf("Step 1: Apply policies in 'warn' mode first:\n")
 	fmt.Printf("        (Set enforcementAction: warn in Constraint, or validationFailureAction: Audit in ClusterPolicy)\n")
@@ -135,49 +134,4 @@ func runDryrun(manifestArgs, policyArgs []string) error {
 	fmt.Printf("        (Set enforcementAction: deny in Constraint, or validationFailureAction: Enforce in ClusterPolicy)\n")
 
 	return nil
-}
-
-// expandPaths resolves a list of file/directory paths into a flat list of YAML file paths.
-func expandPaths(args []string) ([]string, error) {
-	var files []string
-	for _, arg := range args {
-		info, err := os.Stat(arg)
-		if err != nil {
-			return nil, fmt.Errorf("cannot access %s: %w", arg, err)
-		}
-		if info.IsDir() {
-			entries, err := os.ReadDir(arg)
-			if err != nil {
-				return nil, err
-			}
-			for _, e := range entries {
-				if e.IsDir() {
-					continue
-				}
-				name := e.Name()
-				if strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml") {
-					files = append(files, arg+"/"+name)
-				}
-			}
-		} else {
-			files = append(files, arg)
-		}
-	}
-	return files, nil
-}
-
-func sortedKeys(m map[string][]dryrun.PolicyHit) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	// Simple sort.
-	for i := 0; i < len(keys); i++ {
-		for j := i + 1; j < len(keys); j++ {
-			if keys[i] > keys[j] {
-				keys[i], keys[j] = keys[j], keys[i]
-			}
-		}
-	}
-	return keys
 }

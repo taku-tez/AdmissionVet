@@ -58,40 +58,19 @@ func runPSASimulate(fromFile string, level psa.Level, namespace string) error {
 		return fmt.Errorf("unsupported level %q: use baseline or restricted", level)
 	}
 
-	var violations []psa.Violation
-	var err error
-
-	// Support directory input by globbing YAML files.
-	info, statErr := os.Stat(fromFile)
-	if statErr != nil {
-		return fmt.Errorf("cannot access %s: %w", fromFile, statErr)
+	files, err := expandPaths([]string{fromFile})
+	if err != nil {
+		return err
 	}
 
-	if info.IsDir() {
-		entries, err := os.ReadDir(fromFile)
+	var violations []psa.Violation
+	for _, f := range files {
+		v, err := psa.SimulateFile(f, level, namespace)
 		if err != nil {
-			return err
+			fmt.Fprintf(os.Stderr, "Warning: skipping %s: %v\n", f, err)
+			continue
 		}
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			name := e.Name()
-			if len(name) < 5 || (name[len(name)-5:] != ".yaml" && name[len(name)-4:] != ".yml") {
-				continue
-			}
-			v, err := psa.SimulateFile(fromFile+"/"+name, level, namespace)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: skipping %s: %v\n", name, err)
-				continue
-			}
-			violations = append(violations, v...)
-		}
-	} else {
-		violations, err = psa.SimulateFile(fromFile, level, namespace)
-		if err != nil {
-			return err
-		}
+		violations = append(violations, v...)
 	}
 
 	fmt.Printf("PSA Simulation — level: %s\n\n", level)
@@ -116,6 +95,5 @@ func runPSASimulate(fromFile string, level psa.Level, namespace string) error {
 	fmt.Printf("\nFix the violations above, then apply:\n")
 	fmt.Printf("  kubectl label namespace <ns> pod-security.kubernetes.io/enforce=%s\n", level)
 
-	os.Exit(1)
-	return nil
+	return fmt.Errorf("PSA simulation found %d violation(s)", len(violations))
 }

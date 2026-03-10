@@ -8,21 +8,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/AdmissionVet/admissionvet/internal/input"
-	"github.com/AdmissionVet/admissionvet/internal/output"
 	"github.com/AdmissionVet/admissionvet/internal/policy"
 	"github.com/AdmissionVet/admissionvet/internal/registry"
-	"github.com/AdmissionVet/admissionvet/internal/versions"
-
-	// Register all Gatekeeper generators via side-effect imports.
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/gatekeeper/manifestvet"
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/gatekeeper/networkvet"
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/gatekeeper/rbacvet"
-
-	// Register all Kyverno generators via side-effect imports.
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/imagepolicy"
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/manifestvet"
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/networkvet"
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/rbacvet"
 )
 
 // NewGenerateCommand returns the `admissionvet generate` cobra command.
@@ -66,20 +53,17 @@ Examples:
 }
 
 func runGenerate(fromFile, engine, severity, namespace, outputDir, format string, diff bool) error {
-	if engine != "gatekeeper" && engine != "kyverno" {
-		return fmt.Errorf("unsupported engine %q: use gatekeeper or kyverno", engine)
+	if err := validateEngine(engine); err != nil {
+		return err
 	}
 
-	// Load custom rules from the registry (silently ignore errors).
-	_ = registry.RegisterAll("")
+	_ = registry.RegisterAll("") // load custom rules (best-effort)
 
-	// Load scan results.
 	result, err := input.LoadFromFile(fromFile)
 	if err != nil {
 		return err
 	}
 
-	// Apply filters.
 	violations := result.Violations
 	if severity != "" {
 		violations = input.FilterBySeverity(violations, input.Severity(severity))
@@ -93,74 +77,30 @@ func runGenerate(fromFile, engine, severity, namespace, outputDir, format string
 		return nil
 	}
 
-	// Collect unique rule IDs.
 	ruleIDs := input.UniqueRuleIDs(violations)
-
-	// Group violations by rule ID.
 	byRule := make(map[string][]input.Violation)
 	for _, v := range violations {
 		byRule[v.RuleID] = append(byRule[v.RuleID], v)
 	}
 
-	// Generate policies.
-	var policies []*policy.GeneratedPolicy
-	var skipped []string
-
-	for _, ruleID := range ruleIDs {
-		gen, ok := policy.Get(engine, ruleID)
-		if !ok {
-			skipped = append(skipped, ruleID)
-			continue
-		}
-		p, err := gen.Generate(byRule[ruleID], namespace)
-		if err != nil {
-			return fmt.Errorf("generating policy for %s: %w", ruleID, err)
-		}
-		policies = append(policies, p)
+	policies, skipped, err := generatePolicies(engine, ruleIDs, byRule, namespace)
+	if err != nil {
+		return err
 	}
-
 	if len(skipped) > 0 {
 		fmt.Printf("Warning: no generator found for rule IDs: %v (skipped)\n", skipped)
 	}
-
 	if len(policies) == 0 {
 		fmt.Println("No policies generated.")
 		return nil
 	}
 
-	// Diff mode: compare with existing files.
 	if diff {
 		return showDiff(policies, outputDir)
 	}
 
 	fmt.Printf("Generating %d policies [engine=%s format=%s] → %s/\n", len(policies), engine, format, outputDir)
-
-	// Stash current state before overwriting (for rollback).
-	if h, err := versions.Load(outputDir); err == nil && len(h.Entries) > 0 {
-		_ = versions.Stash(outputDir, h.Entries[len(h.Entries)-1].Version)
-	}
-
-	// Write output.
-	var writeErr error
-	switch format {
-	case "yaml":
-		writeErr = output.WriteYAML(policies, outputDir)
-	case "helm":
-		writeErr = output.WriteHelm(policies, outputDir)
-	case "kustomize":
-		writeErr = output.WriteKustomize(policies, outputDir)
-	default:
-		return fmt.Errorf("unsupported format %q: use yaml|helm|kustomize", format)
-	}
-	if writeErr != nil {
-		return writeErr
-	}
-
-	// Record this generation in version history.
-	if entry, err := versions.Record(outputDir, engine, fromFile); err == nil {
-		fmt.Printf("  versioned as v%d\n", entry.Version)
-	}
-	return nil
+	return writePolicies(policies, format, outputDir, engine, fromFile)
 }
 
 // showDiff prints a line-level diff between generated policies and existing files.
@@ -209,23 +149,18 @@ func showDiff(policies []*policy.GeneratedPolicy, outputDir string) error {
 	return nil
 }
 
-func printLineDiff(old, new string) {
-	oldLines := strings.Split(old, "\n")
-	newLines := strings.Split(new, "\n")
+func printLineDiff(oldContent, newContent string) {
+	oldLines := strings.Split(oldContent, "\n")
+	newLines := strings.Split(newContent, "\n")
 
-	maxOld := len(oldLines)
-	maxNew := len(newLines)
-	max := maxOld
-	if maxNew > max {
-		max = maxNew
-	}
+	n := max(len(oldLines), len(newLines))
 
-	for i := 0; i < max; i++ {
+	for i := range n {
 		var oldLine, newLine string
-		if i < maxOld {
+		if i < len(oldLines) {
 			oldLine = oldLines[i]
 		}
-		if i < maxNew {
+		if i < len(newLines) {
 			newLine = newLines[i]
 		}
 		if oldLine != newLine {

@@ -10,18 +10,7 @@ import (
 
 	"github.com/AdmissionVet/admissionvet/internal/input"
 	"github.com/AdmissionVet/admissionvet/internal/library"
-	"github.com/AdmissionVet/admissionvet/internal/output"
-	"github.com/AdmissionVet/admissionvet/internal/policy"
 	"github.com/AdmissionVet/admissionvet/internal/registry"
-	"github.com/AdmissionVet/admissionvet/internal/versions"
-
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/gatekeeper/manifestvet"
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/gatekeeper/networkvet"
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/gatekeeper/rbacvet"
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/imagepolicy"
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/manifestvet"
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/networkvet"
-	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/rbacvet"
 )
 
 // NewListPoliciesCommand returns the `admissionvet list-policies` command.
@@ -101,48 +90,33 @@ Examples:
 }
 
 func runApply(presetName, engine, namespace, outputDir, format string) error {
-	_ = registry.RegisterAll("") // load custom rules
+	if err := validateEngine(engine); err != nil {
+		return err
+	}
+	_ = registry.RegisterAll("") // load custom rules (best-effort)
 
 	p := library.Get(presetName)
 	if p == nil {
-		names := make([]string, 0)
+		var names []string
 		for _, pr := range library.All() {
 			names = append(names, pr.Name)
 		}
 		return fmt.Errorf("unknown preset %q. Available: %s", presetName, strings.Join(names, ", "))
 	}
 
-	if engine != "gatekeeper" && engine != "kyverno" {
-		return fmt.Errorf("unsupported engine %q: use gatekeeper or kyverno", engine)
-	}
-
-	// Deduplicate rule IDs.
 	ruleIDs := input.UniqueRuleIDs(p.Violations)
 	byRule := make(map[string][]input.Violation)
 	for _, v := range p.Violations {
 		byRule[v.RuleID] = append(byRule[v.RuleID], v)
 	}
 
-	var policies []*policy.GeneratedPolicy
-	var skipped []string
-
-	for _, ruleID := range ruleIDs {
-		gen, ok := policy.Get(engine, ruleID)
-		if !ok {
-			skipped = append(skipped, ruleID)
-			continue
-		}
-		pol, err := gen.Generate(byRule[ruleID], namespace)
-		if err != nil {
-			return fmt.Errorf("generating policy for %s: %w", ruleID, err)
-		}
-		policies = append(policies, pol)
+	policies, skipped, err := generatePolicies(engine, ruleIDs, byRule, namespace)
+	if err != nil {
+		return err
 	}
-
 	if len(skipped) > 0 {
 		fmt.Printf("Warning: no generator found for: %v (skipped)\n", skipped)
 	}
-
 	if len(policies) == 0 {
 		fmt.Println("No policies generated.")
 		return nil
@@ -150,29 +124,5 @@ func runApply(presetName, engine, namespace, outputDir, format string) error {
 
 	fmt.Printf("Applying preset '%s' [engine=%s format=%s] — %d policies → %s/\n",
 		p.Name, engine, format, len(policies), outputDir)
-
-	// Stash before overwriting.
-	if h, err := versions.Load(outputDir); err == nil && len(h.Entries) > 0 {
-		_ = versions.Stash(outputDir, h.Entries[len(h.Entries)-1].Version)
-	}
-
-	var writeErr error
-	switch format {
-	case "yaml":
-		writeErr = output.WriteYAML(policies, outputDir)
-	case "helm":
-		writeErr = output.WriteHelm(policies, outputDir)
-	case "kustomize":
-		writeErr = output.WriteKustomize(policies, outputDir)
-	default:
-		return fmt.Errorf("unsupported format %q: use yaml|helm|kustomize", format)
-	}
-	if writeErr != nil {
-		return writeErr
-	}
-
-	if entry, err := versions.Record(outputDir, engine, "preset:"+presetName); err == nil {
-		fmt.Printf("  versioned as v%d\n", entry.Version)
-	}
-	return nil
+	return writePolicies(policies, format, outputDir, engine, "preset:"+presetName)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -141,7 +142,7 @@ func runWebhookTest(fromFile string) error {
 			reachable = "NO"
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			r.Webhook, r.URL, reachable, r.ResponseTime.Round(1*1000000), r.Error)
+			r.Webhook, r.URL, reachable, r.ResponseTime.Round(time.Millisecond), r.Error)
 	}
 	w.Flush()
 	return nil
