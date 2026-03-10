@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -27,6 +29,7 @@ func newWebhookValidateCommand() *cobra.Command {
 		fromFile string
 		cluster  bool
 		severity string
+		output   string
 	)
 
 	cmd := &cobra.Command{
@@ -42,26 +45,30 @@ func newWebhookValidateCommand() *cobra.Command {
 Examples:
   admissionvet webhook validate --from webhook.yaml
   admissionvet webhook validate --cluster
-  admissionvet webhook validate --cluster --severity error`,
+  admissionvet webhook validate --cluster --severity error
+  admissionvet webhook validate --cluster --output json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWebhookValidate(fromFile, cluster, severity)
+			return runWebhookValidate(fromFile, cluster, severity, output)
 		},
 	}
 
 	cmd.Flags().StringVarP(&fromFile, "from", "f", "", "Path to webhook configuration YAML")
 	cmd.Flags().BoolVar(&cluster, "cluster", false, "Fetch configurations from the current cluster via kubectl")
 	cmd.Flags().StringVar(&severity, "severity", "", "Filter findings: error|warning|info")
+	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json")
 
 	return cmd
 }
 
-func runWebhookValidate(fromFile string, cluster bool, severity string) error {
+func runWebhookValidate(fromFile string, cluster bool, severity string, output string) error {
 	var findings []webhook.Finding
 	var err error
 
 	switch {
 	case cluster:
-		fmt.Println("Fetching webhook configurations from cluster...")
+		if output != "json" {
+			fmt.Fprintln(os.Stderr, "Fetching webhook configurations from cluster...")
+		}
 		findings, err = webhook.ValidateCluster()
 	case fromFile != "":
 		findings, err = webhook.ValidateFile(fromFile)
@@ -75,6 +82,10 @@ func runWebhookValidate(fromFile string, cluster bool, severity string) error {
 	// Filter by severity.
 	if severity != "" {
 		findings = filterFindings(findings, webhook.Severity(severity))
+	}
+
+	if strings.ToLower(output) == "json" {
+		return writeWebhookJSON(findings)
 	}
 
 	if len(findings) == 0 {
@@ -98,6 +109,47 @@ func runWebhookValidate(fromFile string, cluster bool, severity string) error {
 		os.Exit(1)
 	}
 	return nil
+}
+
+type jsonWebhookFinding struct {
+	RuleID   string `json:"rule_id"`
+	Severity string `json:"severity"`
+	Webhook  string `json:"webhook"`
+	Kind     string `json:"kind"`
+	Message  string `json:"message"`
+}
+
+type jsonWebhookOutput struct {
+	Summary  struct {
+		Total    int `json:"total"`
+		Errors   int `json:"errors"`
+		Warnings int `json:"warnings"`
+	} `json:"summary"`
+	Findings []jsonWebhookFinding `json:"findings"`
+}
+
+func writeWebhookJSON(findings []webhook.Finding) error {
+	out := jsonWebhookOutput{}
+	out.Findings = make([]jsonWebhookFinding, 0, len(findings))
+	for _, f := range findings {
+		sev := strings.ToLower(string(f.Severity))
+		out.Findings = append(out.Findings, jsonWebhookFinding{
+			RuleID:   f.RuleID,
+			Severity: sev,
+			Webhook:  f.Webhook,
+			Kind:     f.Kind,
+			Message:  f.Message,
+		})
+		out.Summary.Total++
+		if f.Severity == webhook.SeverityError {
+			out.Summary.Errors++
+		} else {
+			out.Summary.Warnings++
+		}
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
 }
 
 func newWebhookTestCommand() *cobra.Command {
