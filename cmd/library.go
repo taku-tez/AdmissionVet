@@ -12,6 +12,8 @@ import (
 	"github.com/AdmissionVet/admissionvet/internal/library"
 	"github.com/AdmissionVet/admissionvet/internal/output"
 	"github.com/AdmissionVet/admissionvet/internal/policy"
+	"github.com/AdmissionVet/admissionvet/internal/registry"
+	"github.com/AdmissionVet/admissionvet/internal/versions"
 
 	_ "github.com/AdmissionVet/admissionvet/internal/policy/gatekeeper/manifestvet"
 	_ "github.com/AdmissionVet/admissionvet/internal/policy/gatekeeper/networkvet"
@@ -99,6 +101,8 @@ Examples:
 }
 
 func runApply(presetName, engine, namespace, outputDir, format string) error {
+	_ = registry.RegisterAll("") // load custom rules
+
 	p := library.Get(presetName)
 	if p == nil {
 		names := make([]string, 0)
@@ -147,14 +151,28 @@ func runApply(presetName, engine, namespace, outputDir, format string) error {
 	fmt.Printf("Applying preset '%s' [engine=%s format=%s] — %d policies → %s/\n",
 		p.Name, engine, format, len(policies), outputDir)
 
+	// Stash before overwriting.
+	if h, err := versions.Load(outputDir); err == nil && len(h.Entries) > 0 {
+		_ = versions.Stash(outputDir, h.Entries[len(h.Entries)-1].Version)
+	}
+
+	var writeErr error
 	switch format {
 	case "yaml":
-		return output.WriteYAML(policies, outputDir)
+		writeErr = output.WriteYAML(policies, outputDir)
 	case "helm":
-		return output.WriteHelm(policies, outputDir)
+		writeErr = output.WriteHelm(policies, outputDir)
 	case "kustomize":
-		return output.WriteKustomize(policies, outputDir)
+		writeErr = output.WriteKustomize(policies, outputDir)
 	default:
 		return fmt.Errorf("unsupported format %q: use yaml|helm|kustomize", format)
 	}
+	if writeErr != nil {
+		return writeErr
+	}
+
+	if entry, err := versions.Record(outputDir, engine, "preset:"+presetName); err == nil {
+		fmt.Printf("  versioned as v%d\n", entry.Version)
+	}
+	return nil
 }

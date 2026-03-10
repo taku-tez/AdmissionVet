@@ -1,0 +1,51 @@
+{
+  "summary": {
+    "total": 4,
+    "errors": 3,
+    "warnings": 1
+  },
+  "results": [
+    {
+      "file": "deployments/nginx.yaml",
+      "resource": "Deployment/nginx",
+      "issues": [
+        {
+          "id": "mv1003",
+          "severity": "error",
+          "message": "Container 'nginx' has privileged: true",
+          "namespace": "default"
+        },
+        {
+          "id": "mv1004",
+          "severity": "error",
+          "message": "Pod uses hostPID: true",
+          "namespace": "default"
+        }
+      ]
+    },
+    {
+      "file": "rbac/roles.yaml",
+      "resource": "ClusterRole/developer",
+      "issues": [
+        {
+          "id": "rb1001",
+          "severity": "error",
+          "message": "ClusterRole 'developer' uses wildcard verb",
+          "namespace": ""
+        }
+      ]
+    },
+    {
+      "file": "deployments/api.yaml",
+      "resource": "Deployment/api",
+      "issues": [
+        {
+          "id": "mv1010",
+          "severity": "warning",
+          "message": "Container 'api' missing readOnlyRootFilesystem",
+          "namespace": "production"
+        }
+      ]
+    }
+  ]
+}

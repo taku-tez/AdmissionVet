@@ -32,6 +32,8 @@ func main() {
 	rootCmd.AddCommand(cmd.NewWebhookCommand())
 	rootCmd.AddCommand(cmd.NewPSACommand())
 	rootCmd.AddCommand(cmd.NewDryrunCommand())
+	rootCmd.AddCommand(cmd.NewVersionCommand())
+	rootCmd.AddCommand(cmd.NewRegistryCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

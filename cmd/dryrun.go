@@ -11,6 +11,8 @@ import (
 	"github.com/AdmissionVet/admissionvet/internal/dryrun"
 )
 
+var _ = strings.Join // ensure strings is used
+
 // NewDryrunCommand returns the `admissionvet dryrun` command.
 func NewDryrunCommand() *cobra.Command {
 	var (
@@ -96,6 +98,33 @@ func runDryrun(manifestArgs, policyArgs []string) error {
 		}
 	}
 	w.Flush()
+
+	// Rollout impact section.
+	if len(result.RolloutImpacts) > 0 {
+		fmt.Printf("\n--- Rollout Impact ---\n")
+		fmt.Printf("The following Deployments/StatefulSets would fail to roll out:\n\n")
+		w2 := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w2, "KIND\tNAMESPACE\tNAME\tREPLICAS\tBLOCKED BY")
+		fmt.Fprintln(w2, "----\t---------\t----\t--------\t----------")
+		for _, impact := range result.RolloutImpacts {
+			policies := make(map[string]bool)
+			for _, h := range impact.PolicyHits {
+				policies[h.Policy] = true
+			}
+			var pnames []string
+			for p := range policies {
+				pnames = append(pnames, p)
+			}
+			fmt.Fprintf(w2, "%s\t%s\t%s\t%d\t%s\n",
+				impact.Resource.Kind,
+				impact.Resource.Namespace,
+				impact.Resource.Name,
+				impact.Replicas,
+				strings.Join(pnames, ", "),
+			)
+		}
+		w2.Flush()
+	}
 
 	// Migration plan suggestion.
 	fmt.Printf("\n--- Migration Plan ---\n")

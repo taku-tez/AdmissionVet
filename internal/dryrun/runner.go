@@ -26,11 +26,20 @@ type PolicyHit struct {
 	Message  string
 }
 
+// RolloutImpact describes the impact of blocking a Deployment or StatefulSet.
+type RolloutImpact struct {
+	Resource      ResourceSummary
+	Replicas      int
+	PolicyHits    []PolicyHit
+	ServiceAtRisk bool // true if the resource has a matching Service
+}
+
 // SimulationResult is the full output of a dry-run simulation.
 type SimulationResult struct {
 	TotalResources int
 	TotalPolicies  int
 	Hits           []PolicyHit
+	RolloutImpacts []RolloutImpact
 }
 
 // Summary returns a grouped summary by namespace.
@@ -110,7 +119,76 @@ func RunFromFiles(manifestPaths, policyPaths []string) (*SimulationResult, error
 		}
 	}
 
+	// Compute rollout impact for Deployments and StatefulSets.
+	result.RolloutImpacts = computeRolloutImpacts(result.Hits, resources)
+
 	return result, nil
+}
+
+// computeRolloutImpacts groups blocking hits by Deployment/StatefulSet and
+// estimates the operational impact.
+func computeRolloutImpacts(hits []PolicyHit, resources []resourceObject) []RolloutImpact {
+	// Index resources by kind/name/namespace.
+	type resourceKey struct{ kind, name, ns string }
+	resMap := make(map[resourceKey]resourceObject)
+	for _, r := range resources {
+		resMap[resourceKey{r.Kind, r.name(), r.namespace()}] = r
+	}
+
+	// Group blocking hits by Deployment/StatefulSet.
+	type hitGroup struct {
+		res  ResourceSummary
+		hits []PolicyHit
+	}
+	groups := make(map[resourceKey]*hitGroup)
+
+	for _, h := range hits {
+		if h.Action != "block" {
+			continue
+		}
+		if h.Resource.Kind != "Deployment" && h.Resource.Kind != "StatefulSet" && h.Resource.Kind != "DaemonSet" {
+			continue
+		}
+		k := resourceKey{h.Resource.Kind, h.Resource.Name, h.Resource.Namespace}
+		if groups[k] == nil {
+			groups[k] = &hitGroup{res: h.Resource}
+		}
+		groups[k].hits = append(groups[k].hits, h)
+	}
+
+	var impacts []RolloutImpact
+	for k, g := range groups {
+		res, ok := resMap[k]
+		replicas := 1
+		if ok {
+			if r, ok := res.Spec["replicas"]; ok {
+				switch v := r.(type) {
+				case int:
+					replicas = v
+				case float64:
+					replicas = int(v)
+				}
+			}
+		}
+		impacts = append(impacts, RolloutImpact{
+			Resource:   g.res,
+			Replicas:   replicas,
+			PolicyHits: g.hits,
+		})
+	}
+
+	// Sort by namespace + name for deterministic output.
+	for i := 0; i < len(impacts); i++ {
+		for j := i + 1; j < len(impacts); j++ {
+			ki := impacts[i].Resource.Namespace + "/" + impacts[i].Resource.Name
+			kj := impacts[j].Resource.Namespace + "/" + impacts[j].Resource.Name
+			if ki > kj {
+				impacts[i], impacts[j] = impacts[j], impacts[i]
+			}
+		}
+	}
+
+	return impacts
 }
 
 // ── Internal types for policy parsing ───────────────────────────────────────

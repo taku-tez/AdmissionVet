@@ -10,6 +10,8 @@ import (
 	"github.com/AdmissionVet/admissionvet/internal/input"
 	"github.com/AdmissionVet/admissionvet/internal/output"
 	"github.com/AdmissionVet/admissionvet/internal/policy"
+	"github.com/AdmissionVet/admissionvet/internal/registry"
+	"github.com/AdmissionVet/admissionvet/internal/versions"
 
 	// Register all Gatekeeper generators via side-effect imports.
 	_ "github.com/AdmissionVet/admissionvet/internal/policy/gatekeeper/manifestvet"
@@ -67,6 +69,9 @@ func runGenerate(fromFile, engine, severity, namespace, outputDir, format string
 	if engine != "gatekeeper" && engine != "kyverno" {
 		return fmt.Errorf("unsupported engine %q: use gatekeeper or kyverno", engine)
 	}
+
+	// Load custom rules from the registry (silently ignore errors).
+	_ = registry.RegisterAll("")
 
 	// Load scan results.
 	result, err := input.LoadFromFile(fromFile)
@@ -130,17 +135,32 @@ func runGenerate(fromFile, engine, severity, namespace, outputDir, format string
 
 	fmt.Printf("Generating %d policies [engine=%s format=%s] → %s/\n", len(policies), engine, format, outputDir)
 
+	// Stash current state before overwriting (for rollback).
+	if h, err := versions.Load(outputDir); err == nil && len(h.Entries) > 0 {
+		_ = versions.Stash(outputDir, h.Entries[len(h.Entries)-1].Version)
+	}
+
 	// Write output.
+	var writeErr error
 	switch format {
 	case "yaml":
-		return output.WriteYAML(policies, outputDir)
+		writeErr = output.WriteYAML(policies, outputDir)
 	case "helm":
-		return output.WriteHelm(policies, outputDir)
+		writeErr = output.WriteHelm(policies, outputDir)
 	case "kustomize":
-		return output.WriteKustomize(policies, outputDir)
+		writeErr = output.WriteKustomize(policies, outputDir)
 	default:
 		return fmt.Errorf("unsupported format %q: use yaml|helm|kustomize", format)
 	}
+	if writeErr != nil {
+		return writeErr
+	}
+
+	// Record this generation in version history.
+	if entry, err := versions.Record(outputDir, engine, fromFile); err == nil {
+		fmt.Printf("  versioned as v%d\n", entry.Version)
+	}
+	return nil
 }
 
 // showDiff prints a line-level diff between generated policies and existing files.

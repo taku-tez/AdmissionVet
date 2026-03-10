@@ -1,0 +1,19 @@
+# Example custom rule for the AdmissionVet registry.
+# Install with: admissionvet registry add --file testdata/custom-rule-example.yaml
+rule_id: CUSTOM001
+engine: kyverno
+description: "Require resource limits on all containers (org policy)"
+match_kinds:
+  - Pod
+  - Deployment
+  - StatefulSet
+severity: error
+validate_action: Enforce
+validate_message: "All containers must set resource limits (CUSTOM001)"
+validate_pattern: |
+  spec:
+    containers:
+      - resources:
+          limits:
+            memory: "?*"
+            cpu: "?*"

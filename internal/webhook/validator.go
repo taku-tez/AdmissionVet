@@ -208,7 +208,7 @@ func excludesKubeSystem(sel *labelSelector) bool {
 	return false
 }
 
-// checkCertExpiry decodes the caBundle and checks certificate expiry.
+// checkCertExpiry decodes the caBundle, verifies the certificate chain, and checks expiry.
 func checkCertExpiry(webhookLabel, kind, caBundle string) []Finding {
 	var findings []Finding
 
@@ -217,33 +217,102 @@ func checkCertExpiry(webhookLabel, kind, caBundle string) []Finding {
 		return findings
 	}
 
-	block, _ := pem.Decode(pemData)
-	if block == nil {
+	// Parse all certificates from the PEM bundle.
+	var certs []*x509.Certificate
+	rest := pemData
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			continue
+		}
+		certs = append(certs, cert)
+	}
+
+	if len(certs) == 0 {
 		return findings
 	}
 
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
+	// AV3005: Check each certificate for expiry.
+	for _, cert := range certs {
+		daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
+		label := cert.Subject.CommonName
+		if label == "" {
+			label = webhookLabel
+		}
+
+		if daysLeft <= 0 {
+			findings = append(findings, Finding{
+				RuleID:   "AV3005",
+				Severity: SeverityError,
+				Webhook:  webhookLabel,
+				Kind:     kind,
+				Message:  fmt.Sprintf("TLS certificate '%s' has EXPIRED (expired: %s)", label, cert.NotAfter.Format("2006-01-02")),
+			})
+		} else if daysLeft <= 30 {
+			findings = append(findings, Finding{
+				RuleID:   "AV3005",
+				Severity: SeverityWarning,
+				Webhook:  webhookLabel,
+				Kind:     kind,
+				Message:  fmt.Sprintf("TLS certificate '%s' expires in %d days (%s)", label, daysLeft, cert.NotAfter.Format("2006-01-02")),
+			})
+		}
+	}
+
+	// AV3006: Verify certificate chain integrity.
+	findings = append(findings, checkCertChain(webhookLabel, kind, certs)...)
+
+	return findings
+}
+
+// checkCertChain verifies that the certificates form a valid chain.
+func checkCertChain(webhookLabel, kind string, certs []*x509.Certificate) []Finding {
+	var findings []Finding
+	if len(certs) < 2 {
+		// Single cert: check if it is self-signed.
+		if len(certs) == 1 {
+			c := certs[0]
+			if c.Issuer.String() == c.Subject.String() {
+				findings = append(findings, Finding{
+					RuleID:   "AV3006",
+					Severity: SeverityWarning,
+					Webhook:  webhookLabel,
+					Kind:     kind,
+					Message:  fmt.Sprintf("webhook '%s' uses a self-signed TLS certificate — consider using a proper CA", webhookLabel),
+				})
+			}
+		}
 		return findings
 	}
 
-	daysLeft := int(time.Until(cert.NotAfter).Hours() / 24)
+	// Build root pool from the last cert in the chain (assumed to be the root CA).
+	roots := x509.NewCertPool()
+	roots.AddCert(certs[len(certs)-1])
 
-	if daysLeft <= 0 {
+	// Build intermediates pool from middle certs.
+	intermediates := x509.NewCertPool()
+	for _, c := range certs[1 : len(certs)-1] {
+		intermediates.AddCert(c)
+	}
+
+	// Verify the leaf cert.
+	opts := x509.VerifyOptions{
+		Roots:         roots,
+		Intermediates: intermediates,
+		CurrentTime:   time.Now(),
+	}
+	if _, err := certs[0].Verify(opts); err != nil {
 		findings = append(findings, Finding{
-			RuleID:   "AV3005",
+			RuleID:   "AV3006",
 			Severity: SeverityError,
 			Webhook:  webhookLabel,
 			Kind:     kind,
-			Message:  fmt.Sprintf("webhook '%s' TLS certificate has EXPIRED (expired: %s)", webhookLabel, cert.NotAfter.Format("2006-01-02")),
-		})
-	} else if daysLeft <= 30 {
-		findings = append(findings, Finding{
-			RuleID:   "AV3005",
-			Severity: SeverityWarning,
-			Webhook:  webhookLabel,
-			Kind:     kind,
-			Message:  fmt.Sprintf("webhook '%s' TLS certificate expires in %d days (%s)", webhookLabel, daysLeft, cert.NotAfter.Format("2006-01-02")),
+			Message:  fmt.Sprintf("webhook '%s' TLS certificate chain is invalid: %v", webhookLabel, err),
 		})
 	}
 

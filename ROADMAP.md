@@ -74,7 +74,7 @@ Kubernetes Admission Webhook として適用することでリアルタイムブ
 ### Webhook の到達性テスト
 - [x] `admissionvet webhook test --from webhook.yaml` で TLS 到達性確認・応答時間測定
 - [x] 各 Webhook の応答時間測定
-- [ ] 証明書チェーンの検証
+- [x] 証明書チェーンの検証 (AV3006: 自己署名検出・チェーン整合性検証)
 
 ---
 
@@ -105,8 +105,8 @@ Kubernetes Admission Webhook として適用することでリアルタイムブ
 ### ポリシー管理
 - [x] `admissionvet list-policies` で利用可能ポリシー一覧
 - [x] `admissionvet apply --preset gke-standard` でまとめて適用
-- [ ] ポリシーのバージョン管理・ロールバック
-- [ ] 組織カスタムポリシーのレジストリ登録
+- [x] ポリシーのバージョン管理・ロールバック (`admissionvet version list/rollback`)
+- [x] 組織カスタムポリシーのレジストリ登録 (`admissionvet registry add/list/remove`)
 
 ---
 
@@ -116,7 +116,7 @@ Kubernetes Admission Webhook として適用することでリアルタイムブ
 
 - [x] `admissionvet dryrun --manifest manifests/ --policy output/` でファイルベースのポリシー評価
 - [x] 影響リソースの一覧出力 (namespace / リソース種別 / 件数)
-- [ ] ブロックされる Deployment のロールアウト影響シミュレーション
+- [x] ブロックされる Deployment のロールアウト影響シミュレーション (replicas 数・ポリシー名を表示)
 - [x] 段階適用計画の自動生成 (`warn` → `enforce` の移行スケジュール)
 
 ---
@@ -125,10 +125,10 @@ Kubernetes Admission Webhook として適用することでリアルタイムブ
 
 | バージョン | K8sVet対応 | 内容 |
 |---|---|---|
-| AdmissionVet v0.1.0 完了後 | K8sVet v0.6.0 | `k8svet scan . --emit-policies` で OPA/Kyverno ポリシー出力 |
-| AdmissionVet v0.3.0 完了後 | K8sVet v0.6.0 | `k8svet scan --cluster` に Webhook 設定検証を追加 |
-| AdmissionVet v0.4.0 完了後 | K8sVet v0.6.0 | `k8svet scan --cluster` に PSA ギャップ分析を追加 |
-| AdmissionVet v0.5.0 完了後 | K8sVet v0.7.0 | `k8svet harden --preset gke-standard` コマンド追加 |
+| AdmissionVet v0.1.0 完了後 | K8sVet v0.6.0 | `k8svet scan . --emit-policies` で OPA/Kyverno ポリシー出力 ✅ (K8sVet出力フォーマット対応済) |
+| AdmissionVet v0.3.0 完了後 | K8sVet v0.6.0 | `k8svet scan --cluster` に Webhook 設定検証を追加 ✅ |
+| AdmissionVet v0.4.0 完了後 | K8sVet v0.6.0 | `k8svet scan --cluster` に PSA ギャップ分析を追加 ✅ |
+| AdmissionVet v0.5.0 完了後 | K8sVet v0.7.0 | `k8svet harden --preset gke-standard` コマンド追加 ✅ |
 
 ```bash
 # K8sVet統合後のイメージ
