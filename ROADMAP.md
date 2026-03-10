@@ -62,18 +62,18 @@ Kubernetes Admission Webhook として適用することでリアルタイムブ
 **Goal:** 設定した Admission Webhook の動作を検証・テストする。
 
 ### 既存 Webhook の検証
-- [ ] ValidatingWebhookConfiguration の設定ミス検出
-  - `failurePolicy: Ignore` による回避リスク検出
-  - `namespaceSelector` の穴検出 (kube-system 除外漏れ等)
-  - `timeoutSeconds` が短すぎる場合の警告 (フォールバック動作)
-  - TLS 証明書の有効期限チェック
-- [ ] MutatingWebhookConfiguration の設定ミス検出
-  - `reinvocationPolicy` の設定確認
+- [x] ValidatingWebhookConfiguration の設定ミス検出
+  - `failurePolicy: Ignore` による回避リスク検出 (AV3001)
+  - `namespaceSelector` の穴検出 (kube-system 除外漏れ等) (AV3003)
+  - `timeoutSeconds` が短すぎる場合の警告 (フォールバック動作) (AV3002)
+  - TLS 証明書の有効期限チェック (AV3005)
+- [x] MutatingWebhookConfiguration の設定ミス検出
+  - `reinvocationPolicy` の設定確認 (AV4001)
   - ループリスク検出 (Mutate した結果が再度 Mutate をトリガー)
 
 ### Webhook の到達性テスト
-- [ ] `admissionvet test --cluster` で実際に Webhook へリクエストを送信してレスポンス確認
-- [ ] 各 Webhook の応答時間測定
+- [x] `admissionvet webhook test --from webhook.yaml` で TLS 到達性確認・応答時間測定
+- [x] 各 Webhook の応答時間測定
 - [ ] 証明書チェーンの検証
 
 ---
@@ -84,10 +84,10 @@ Kubernetes Admission Webhook として適用することでリアルタイムブ
 
 - [ ] namespace の PSA ラベル (`pod-security.kubernetes.io/enforce` 等) の確認
 - [ ] ラベルなし namespace の検出と推奨レベルの提案
-- [ ] 既存ワークロードが PSA レベルに準拠しているか事前チェック
-  - `baseline` / `restricted` / `privileged` 各レベルでのシミュレーション
-- [ ] PSA 違反になるワークロードの事前洗い出し (移行計画支援)
-- [ ] `admissionvet psa simulate --level restricted --namespace team-1` コマンド
+- [x] 既存ワークロードが PSA レベルに準拠しているか事前チェック
+  - `baseline` / `restricted` 各レベルでのシミュレーション (PSA-BASE-*, PSA-REST-*)
+- [x] PSA 違反になるワークロードの事前洗い出し (移行計画支援)
+- [x] `admissionvet psa simulate --level restricted --namespace team-1` コマンド
 
 ---
 
@@ -96,15 +96,15 @@ Kubernetes Admission Webhook として適用することでリアルタイムブ
 **Goal:** 即使えるポリシーテンプレートライブラリを提供する。
 
 ### ビルトインポリシーセット
-- [ ] `baseline`: CIS Benchmark 相当のベーシックセキュリティ
-- [ ] `restricted`: 最小権限・最大制限
-- [ ] `gke-standard`: GKE 推奨設定セット
-- [ ] `eks-standard`: EKS 推奨設定セット
-- [ ] `pci-dss`: PCI-DSS 準拠ポリシーセット
+- [x] `baseline`: CIS Benchmark 相当のベーシックセキュリティ
+- [x] `restricted`: 最小権限・最大制限
+- [x] `gke-standard`: GKE 推奨設定セット
+- [x] `eks-standard`: EKS 推奨設定セット
+- [x] `pci-dss`: PCI-DSS 準拠ポリシーセット
 
 ### ポリシー管理
-- [ ] `admissionvet list-policies` で利用可能ポリシー一覧
-- [ ] `admissionvet apply --preset gke-standard` でまとめて適用
+- [x] `admissionvet list-policies` で利用可能ポリシー一覧
+- [x] `admissionvet apply --preset gke-standard` でまとめて適用
 - [ ] ポリシーのバージョン管理・ロールバック
 - [ ] 組織カスタムポリシーのレジストリ登録
 
@@ -114,10 +114,10 @@ Kubernetes Admission Webhook として適用することでリアルタイムブ
 
 **Goal:** ポリシー適用前に既存リソースへの影響を全件シミュレーションする。
 
-- [ ] `admissionvet dryrun --cluster --policy policy.yaml` で全リソースに対してポリシー評価
-- [ ] 影響リソースの一覧出力 (namespace / リソース種別 / 件数)
+- [x] `admissionvet dryrun --manifest manifests/ --policy output/` でファイルベースのポリシー評価
+- [x] 影響リソースの一覧出力 (namespace / リソース種別 / 件数)
 - [ ] ブロックされる Deployment のロールアウト影響シミュレーション
-- [ ] 段階適用計画の自動生成 (`warn` → `enforce` の移行スケジュール)
+- [x] 段階適用計画の自動生成 (`warn` → `enforce` の移行スケジュール)
 
 ---
 

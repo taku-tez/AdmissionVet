@@ -20,6 +20,7 @@ import (
 	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/imagepolicy"
 	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/manifestvet"
 	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/networkvet"
+	_ "github.com/AdmissionVet/admissionvet/internal/policy/kyverno/rbacvet"
 )
 
 // NewGenerateCommand returns the `admissionvet generate` cobra command.
