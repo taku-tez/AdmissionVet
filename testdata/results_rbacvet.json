@@ -1,0 +1,25 @@
+{
+  "violations": [
+    {
+      "rule_id": "RB1001",
+      "severity": "error",
+      "resource": "ClusterRole/developer",
+      "namespace": "",
+      "message": "ClusterRole 'developer' uses wildcard verb '*'"
+    },
+    {
+      "rule_id": "RB1002",
+      "severity": "error",
+      "resource": "ClusterRole/ops",
+      "namespace": "",
+      "message": "ClusterRole 'ops' uses wildcard resource '*'"
+    },
+    {
+      "rule_id": "RB1003",
+      "severity": "error",
+      "resource": "ClusterRoleBinding/team-lead",
+      "namespace": "",
+      "message": "ClusterRoleBinding 'team-lead' grants cluster-admin to user 'alice'"
+    }
+  ]
+}

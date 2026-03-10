@@ -1,0 +1,39 @@
+{
+  "violations": [
+    {
+      "rule_id": "MV1001",
+      "severity": "error",
+      "resource": "Deployment/nginx",
+      "namespace": "default",
+      "message": "Container 'nginx' is running as privileged"
+    },
+    {
+      "rule_id": "MV1002",
+      "severity": "error",
+      "resource": "Deployment/monitoring-agent",
+      "namespace": "monitoring",
+      "message": "Pod uses hostNetwork=true"
+    },
+    {
+      "rule_id": "MV1003",
+      "severity": "error",
+      "resource": "DaemonSet/log-collector",
+      "namespace": "logging",
+      "message": "Container uses hostPath volume '/var/log'"
+    },
+    {
+      "rule_id": "MV1007",
+      "severity": "warning",
+      "resource": "Deployment/api-server",
+      "namespace": "default",
+      "message": "Container 'api' does not set readOnlyRootFilesystem: true"
+    },
+    {
+      "rule_id": "MV2001",
+      "severity": "error",
+      "resource": "Deployment/app",
+      "namespace": "production",
+      "message": "Container 'app' has DB_PASSWORD set as a literal env value"
+    }
+  ]
+}

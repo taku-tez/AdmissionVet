@@ -1,0 +1,11 @@
+{
+  "violations": [
+    {
+      "rule_id": "NV1001",
+      "severity": "error",
+      "resource": "Namespace/team-a",
+      "namespace": "team-a",
+      "message": "Namespace 'team-a' has no default-deny NetworkPolicy"
+    }
+  ]
+}

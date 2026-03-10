@@ -11,29 +11,29 @@ Kubernetes Admission Webhook として適用することでリアルタイムブ
 **Goal:** 既存のスキャン違反から OPA/Gatekeeper の ConstraintTemplate を自動生成する。
 
 ### ConstraintTemplate 生成
-- [ ] ManifestVet 違反 → ConstraintTemplate (Rego) への変換
+- [x] ManifestVet 違反 → ConstraintTemplate (Rego) への変換
   - MV1001: privileged コンテナ禁止
   - MV1002: hostPID/hostIPC/hostNetwork 禁止
   - MV1003: hostPath マウント禁止・制限
   - MV1007: readOnlyRootFilesystem 強制
   - MV2001: env への Secret 直書き禁止
-- [ ] RBACVet 違反 → ClusterRole/Role の制約生成
-  - wildcard verb/resource 禁止ポリシー
-  - system:masters 以外への cluster-admin 付与禁止
-- [ ] NetworkVet 違反 → NetworkPolicy テンプレート生成
-  - default-deny NetworkPolicy の自動生成
+- [x] RBACVet 違反 → ClusterRole/Role の制約生成
+  - wildcard verb/resource 禁止ポリシー (RB1001/RB1002)
+  - system:masters 以外への cluster-admin 付与禁止 (RB1003)
+- [x] NetworkVet 違反 → NetworkPolicy テンプレート生成
+  - default-deny NetworkPolicy の自動生成 (NV1001)
   - namespace ラベルベースの許可ルール
 
 ### 生成オプション
-- [ ] `admissionvet generate --from manifestvet-results.json --engine gatekeeper`
+- [x] `admissionvet generate --from manifestvet-results.json --engine gatekeeper`
 - [ ] K8sVet の統合スキャン結果から直接生成
-- [ ] `--severity error` でエラーのみポリシー化
-- [ ] `--namespace` で対象 namespace を限定
+- [x] `--severity error` でエラーのみポリシー化
+- [x] `--namespace` で対象 namespace を限定
 
 ### 出力フォーマット
-- [ ] YAML (kubectl apply 可能)
-- [ ] Helm chart
-- [ ] Kustomize overlay
+- [x] YAML (kubectl apply 可能)
+- [x] Helm chart
+- [x] Kustomize overlay
 
 ---
 
