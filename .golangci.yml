@@ -1,0 +1,22 @@
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
+    - typecheck
+
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - shadow
+      - fieldalignment
+
+issues:
+  exclude-rules:
+    # Ignore unused parameter warnings in internal/dryrun (intentional interface shape)
+    - path: internal/dryrun/runner.go
+      linters: [unparam]

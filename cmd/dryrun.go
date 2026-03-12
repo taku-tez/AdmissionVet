@@ -10,13 +10,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/AdmissionVet/admissionvet/internal/dryrun"
+	"github.com/AdmissionVet/admissionvet/internal/exceptions"
 )
 
 // NewDryrunCommand returns the `admissionvet dryrun` command.
 func NewDryrunCommand() *cobra.Command {
 	var (
-		manifestPaths []string
-		policyPaths   []string
+		manifestPaths  []string
+		policyPaths    []string
+		exceptionsFile string
 	)
 
 	cmd := &cobra.Command{
@@ -31,21 +33,23 @@ to help plan a phased rollout (warn → enforce).
 Examples:
   admissionvet dryrun --manifest deployment.yaml --policy output/mv1001-constraint.yaml
   admissionvet dryrun --manifest manifests/ --policy output/
-  admissionvet dryrun --manifest k8s/ --policy output/ --policy extra-policy.yaml`,
+  admissionvet dryrun --manifest k8s/ --policy output/ --policy extra-policy.yaml
+  admissionvet dryrun --manifest k8s/ --policy output/ --exceptions exceptions.yaml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDryrun(manifestPaths, policyPaths)
+			return runDryrun(manifestPaths, policyPaths, exceptionsFile)
 		},
 	}
 
 	cmd.Flags().StringArrayVarP(&manifestPaths, "manifest", "m", nil, "Manifest file or directory (repeatable, required)")
 	cmd.Flags().StringArrayVarP(&policyPaths, "policy", "p", nil, "Policy file or directory (repeatable, required)")
+	cmd.Flags().StringVar(&exceptionsFile, "exceptions", "", "Path to exceptions YAML file")
 	cmd.MarkFlagRequired("manifest")
 	cmd.MarkFlagRequired("policy")
 
 	return cmd
 }
 
-func runDryrun(manifestArgs, policyArgs []string) error {
+func runDryrun(manifestArgs, policyArgs []string, exceptionsFile string) error {
 	manifestFiles, err := expandPaths(manifestArgs)
 	if err != nil {
 		return fmt.Errorf("expanding manifest paths: %w", err)
@@ -62,6 +66,11 @@ func runDryrun(manifestArgs, policyArgs []string) error {
 		return fmt.Errorf("no policy YAML files found")
 	}
 
+	excList, err := exceptions.LoadFromFile(exceptionsFile)
+	if err != nil {
+		return fmt.Errorf("loading exceptions: %w", err)
+	}
+
 	fmt.Printf("Simulating %d policies against %d manifest files...\n\n",
 		len(policyFiles), len(manifestFiles))
 
@@ -69,6 +78,10 @@ func runDryrun(manifestArgs, policyArgs []string) error {
 	if err != nil {
 		return err
 	}
+
+	result.Hits = exceptions.Filter(result.Hits, excList, func(h dryrun.PolicyHit) (string, string, string) {
+		return "", h.Resource.Namespace, h.Resource.Kind + "/" + h.Resource.Name
+	})
 
 	fmt.Printf("Resources scanned : %d\n", result.TotalResources)
 	fmt.Printf("Policies evaluated: %d\n", result.TotalPolicies)

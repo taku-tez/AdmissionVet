@@ -1,0 +1,12 @@
+# Compiled binaries
+bin/
+admissionvet
+
+# Version history stash (local only)
+.admissionvet-history.json
+.admissionvet-stash/
+
+# Editor and OS artifacts
+.DS_Store
+*.swp
+*.swo

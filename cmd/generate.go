@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/AdmissionVet/admissionvet/internal/exceptions"
 	"github.com/AdmissionVet/admissionvet/internal/input"
 	"github.com/AdmissionVet/admissionvet/internal/policy"
 	"github.com/AdmissionVet/admissionvet/internal/registry"
@@ -15,28 +16,30 @@ import (
 // NewGenerateCommand returns the `admissionvet generate` cobra command.
 func NewGenerateCommand() *cobra.Command {
 	var (
-		fromFile  string
-		engine    string
-		severity  string
-		namespace string
-		outputDir string
-		format    string
-		diff      bool
+		fromFile       string
+		engine         string
+		severity       string
+		namespace      string
+		outputDir      string
+		format         string
+		diff           bool
+		exceptionsFile string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "generate",
 		Short: "Generate admission control policies from scan results",
 		Long: `Generate OPA/Gatekeeper or Kyverno policies from scan result JSON
-produced by ManifestVet, RBACVet, or NetworkVet.
+produced by ManifestVet, RBACVet, NetworkVet, or Trivy k8s.
 
 Examples:
   admissionvet generate --from results.json --engine gatekeeper
   admissionvet generate --from results.json --engine kyverno --format yaml
   admissionvet generate --from results.json --engine kyverno --diff --output existing/
-  admissionvet generate --from results.json --severity error --namespace team-a --format helm`,
+  admissionvet generate --from results.json --severity error --namespace team-a --format helm
+  admissionvet generate --from trivy.json --engine kyverno --exceptions exceptions.yaml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGenerate(fromFile, engine, severity, namespace, outputDir, format, diff)
+			return runGenerate(fromFile, engine, severity, namespace, outputDir, format, exceptionsFile, diff)
 		},
 	}
 
@@ -47,12 +50,13 @@ Examples:
 	cmd.Flags().StringVarP(&outputDir, "output", "o", "output", "Output directory")
 	cmd.Flags().StringVar(&format, "format", "yaml", "Output format: yaml|helm|kustomize")
 	cmd.Flags().BoolVar(&diff, "diff", false, "Show diff against existing policies in output directory")
+	cmd.Flags().StringVar(&exceptionsFile, "exceptions", "", "Path to exceptions YAML file")
 	cmd.MarkFlagRequired("from")
 
 	return cmd
 }
 
-func runGenerate(fromFile, engine, severity, namespace, outputDir, format string, diff bool) error {
+func runGenerate(fromFile, engine, severity, namespace, outputDir, format, exceptionsFile string, diff bool) error {
 	if err := validateEngine(engine); err != nil {
 		return err
 	}
@@ -64,6 +68,11 @@ func runGenerate(fromFile, engine, severity, namespace, outputDir, format string
 		return err
 	}
 
+	excList, err := exceptions.LoadFromFile(exceptionsFile)
+	if err != nil {
+		return fmt.Errorf("loading exceptions: %w", err)
+	}
+
 	violations := result.Violations
 	if severity != "" {
 		violations = input.FilterBySeverity(violations, input.Severity(severity))
@@ -71,6 +80,9 @@ func runGenerate(fromFile, engine, severity, namespace, outputDir, format string
 	if namespace != "" {
 		violations = input.FilterByNamespace(violations, namespace)
 	}
+	violations = exceptions.Filter(violations, excList, func(v input.Violation) (string, string, string) {
+		return v.RuleID, v.Namespace, v.Resource
+	})
 
 	if len(violations) == 0 {
 		fmt.Println("No violations matched the given filters. Nothing to generate.")

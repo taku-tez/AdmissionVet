@@ -109,7 +109,7 @@ func (g *rb1003) Generate(violations []input.Violation, namespace string) (*poli
               value: cluster-admin
             - key: "{{ request.object.subjects[?(@.kind=='Group' && @.name=='system:masters')] | length(@) }}"
               operator: Equals
-              value: "0"`, action)
+              value: 0`, action)
 
 	cp, err := kyverno.BuildClusterPolicy(kyverno.PolicyParams{
 		Name:        "rb1003-no-cluster-admin",

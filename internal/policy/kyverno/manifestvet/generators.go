@@ -15,6 +15,9 @@ func init() {
 	policy.Register("kyverno", &mv1001{})
 	policy.Register("kyverno", &mv1002{})
 	policy.Register("kyverno", &mv1003{})
+	policy.Register("kyverno", &mv1004{})
+	policy.Register("kyverno", &mv1005{})
+	policy.Register("kyverno", &mv1006{})
 	policy.Register("kyverno", &mv1007{})
 	policy.Register("kyverno", &mv2001{})
 	// Mutate generators (same rule IDs with "-mutate" suffix — registered separately)
@@ -136,7 +139,7 @@ func (g *mv1003) Generate(violations []input.Violation, namespace string) (*poli
           any:
             - key: "{{ request.object.spec.volumes[].hostPath | length(@) }}"
               operator: GreaterThan
-              value: "0"`, action)
+              value: 0`, action)
 
 	cp, err := kyverno.BuildClusterPolicy(kyverno.PolicyParams{
 		Name:        "mv1003-no-hostpath",
@@ -252,14 +255,8 @@ func (g *mv2001) Generate(violations []input.Violation, namespace string) (*poli
                       operator: NotEquals
                       value: ""
                     - key: "{{ element.name }}"
-                      operator: AnyIn
-                      value:
-                        - "*PASSWORD*"
-                        - "*SECRET*"
-                        - "*TOKEN*"
-                        - "*KEY*"
-                        - "*CREDENTIAL*"
-                        - "*AUTH*"`, action)
+                      operator: Regex
+                      value: ".*(PASSWORD|SECRET|TOKEN|KEY|CREDENTIAL|PASSWD|PRIVATE|API_KEY|AUTH).*"`, action)
 
 	cp, err := kyverno.BuildClusterPolicy(kyverno.PolicyParams{
 		Name:        "mv2001-no-secret-env",
@@ -267,6 +264,133 @@ func (g *mv2001) Generate(violations []input.Violation, namespace string) (*poli
 		Rules: []kyverno.Rule{
 			{
 				Name:       "deny-secret-env-values",
+				MatchKinds: kyverno.WorkloadKinds,
+				Namespaces: namespaces(namespace),
+				Type:       kyverno.RuleTypeValidate,
+				Body:       body,
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &policy.GeneratedPolicy{RuleID: g.RuleID(), ClusterPolicy: cp}, nil
+}
+
+// ── MV1004: root ユーザー実行禁止 (validate) ─────────────────────────────────
+
+type mv1004 struct{}
+
+func (g *mv1004) RuleID() string { return "MV1004" }
+
+func (g *mv1004) Generate(violations []input.Violation, namespace string) (*policy.GeneratedPolicy, error) {
+	action := kyverno.ValidationAction(violations)
+	body := fmt.Sprintf(`    validate:
+      validationFailureAction: %s
+      message: "Containers must not run as root. Set runAsNonRoot: true (MV1004)."
+      pattern:
+        spec:
+          =(securityContext):
+            =(runAsUser): ">0"
+          containers:
+            - =(securityContext):
+                =(runAsNonRoot): true
+                =(runAsUser): ">0"`, action)
+
+	cp, err := kyverno.BuildClusterPolicy(kyverno.PolicyParams{
+		Name:        "mv1004-no-root-user",
+		Description: "Prohibits containers from running as root (MV1004)",
+		Rules: []kyverno.Rule{
+			{
+				Name:       "deny-root-user",
+				MatchKinds: kyverno.WorkloadKinds,
+				Namespaces: namespaces(namespace),
+				Type:       kyverno.RuleTypeValidate,
+				Body:       body,
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &policy.GeneratedPolicy{RuleID: g.RuleID(), ClusterPolicy: cp}, nil
+}
+
+// ── MV1005: 危険 Linux Capability 禁止 (validate) ────────────────────────────
+
+type mv1005 struct{}
+
+func (g *mv1005) RuleID() string { return "MV1005" }
+
+func (g *mv1005) Generate(violations []input.Violation, namespace string) (*policy.GeneratedPolicy, error) {
+	action := kyverno.ValidationAction(violations)
+	body := fmt.Sprintf(`    validate:
+      validationFailureAction: %s
+      message: "Dangerous Linux capabilities are not allowed (MV1005). Drop ALL and add only what is needed."
+      deny:
+        conditions:
+          any:
+            - key: "{{ request.object.spec.containers[].securityContext.capabilities.add[] }}"
+              operator: AnyIn
+              value:
+                - ALL
+                - NET_ADMIN
+                - SYS_ADMIN
+                - SYS_PTRACE
+                - SYS_MODULE
+                - SYS_RAWIO
+                - SYS_BOOT
+                - NET_RAW
+                - IPC_LOCK
+                - AUDIT_WRITE
+                - AUDIT_CONTROL
+                - MAC_ADMIN
+                - MAC_OVERRIDE
+                - SETUID
+                - SETGID`, action)
+
+	cp, err := kyverno.BuildClusterPolicy(kyverno.PolicyParams{
+		Name:        "mv1005-no-dangerous-capabilities",
+		Description: "Prohibits dangerous Linux capabilities in containers (MV1005)",
+		Rules: []kyverno.Rule{
+			{
+				Name:       "deny-dangerous-capabilities",
+				MatchKinds: kyverno.WorkloadKinds,
+				Namespaces: namespaces(namespace),
+				Type:       kyverno.RuleTypeValidate,
+				Body:       body,
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &policy.GeneratedPolicy{RuleID: g.RuleID(), ClusterPolicy: cp}, nil
+}
+
+// ── MV1006: allowPrivilegeEscalation を false に強制 (validate) ───────────────
+
+type mv1006 struct{}
+
+func (g *mv1006) RuleID() string { return "MV1006" }
+
+func (g *mv1006) Generate(violations []input.Violation, namespace string) (*policy.GeneratedPolicy, error) {
+	action := kyverno.ValidationAction(violations)
+	body := fmt.Sprintf(`    validate:
+      validationFailureAction: %s
+      message: "Containers must set allowPrivilegeEscalation: false (MV1006)."
+      pattern:
+        spec:
+          containers:
+            - securityContext:
+                allowPrivilegeEscalation: false`, action)
+
+	cp, err := kyverno.BuildClusterPolicy(kyverno.PolicyParams{
+		Name:        "mv1006-no-privilege-escalation",
+		Description: "Requires allowPrivilegeEscalation: false on all containers (MV1006)",
+		Rules: []kyverno.Rule{
+			{
+				Name:       "deny-privilege-escalation",
 				MatchKinds: kyverno.WorkloadKinds,
 				Namespaces: namespaces(namespace),
 				Type:       kyverno.RuleTypeValidate,

@@ -7,31 +7,34 @@ import (
 )
 
 func init() {
-	policy.Register("gatekeeper", &mv1002{})
+	policy.Register("gatekeeper", &mv1004{})
 }
 
-type mv1002 struct{}
+type mv1004 struct{}
 
-func (g *mv1002) RuleID() string { return "MV1002" }
+func (g *mv1004) RuleID() string { return "MV1004" }
 
-const mv1002Rego = `package admissionvet.mv1002
-
-violation[{"msg": msg}] {
-  spec := input_pod_spec
-  spec.hostPID == true
-  msg := sprintf("Pod '%v' uses hostPID which is prohibited (MV1002)", [input.review.object.metadata.name])
-}
+const mv1004Rego = `package admissionvet.mv1004
 
 violation[{"msg": msg}] {
-  spec := input_pod_spec
-  spec.hostIPC == true
-  msg := sprintf("Pod '%v' uses hostIPC which is prohibited (MV1002)", [input.review.object.metadata.name])
+  c := input_containers[_]
+  # runAsUser: 0 explicitly sets root
+  object.get(c, ["securityContext", "runAsUser"], -1) == 0
+  msg := sprintf("Container '%v' sets runAsUser: 0 (root) — MV1004", [c.name])
 }
 
 violation[{"msg": msg}] {
+  c := input_containers[_]
+  # runAsNonRoot: false explicitly permits root
+  object.get(c, ["securityContext", "runAsNonRoot"], true) == false
+  msg := sprintf("Container '%v' sets runAsNonRoot: false — MV1004", [c.name])
+}
+
+violation[{"msg": msg}] {
+  # Pod-level runAsUser: 0 applies to all containers
   spec := input_pod_spec
-  spec.hostNetwork == true
-  msg := sprintf("Pod '%v' uses hostNetwork which is prohibited (MV1002)", [input.review.object.metadata.name])
+  object.get(spec, ["securityContext", "runAsUser"], -1) == 0
+  msg := sprintf("Pod '%v' sets pod-level runAsUser: 0 (root) — MV1004", [input.review.object.metadata.name])
 }
 
 input_pod_spec = spec {
@@ -40,24 +43,35 @@ input_pod_spec = spec {
 }
 
 input_pod_spec = spec {
-  # Limit to known workload kinds that have spec.template.spec to avoid
-  # undefined access on non-standard resources (B-2 fix).
   kind := input.review.object.kind
   kind != "Pod"
   workload_kinds := {"Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "Job", "CronJob"}
   workload_kinds[kind]
   spec := input.review.object.spec.template.spec
+}
+
+input_containers[c] {
+  c := input.review.object.spec.containers[_]
+}
+input_containers[c] {
+  c := input.review.object.spec.initContainers[_]
+}
+input_containers[c] {
+  c := input.review.object.spec.template.spec.containers[_]
+}
+input_containers[c] {
+  c := input.review.object.spec.template.spec.initContainers[_]
 }`
 
-func (g *mv1002) Generate(violations []input.Violation, namespace string) (*policy.GeneratedPolicy, error) {
-	name := "mv1002"
-	kind := "Mv1002"
+func (g *mv1004) Generate(violations []input.Violation, namespace string) (*policy.GeneratedPolicy, error) {
+	name := "mv1004"
+	kind := "Mv1004"
 
 	ct, err := gatekeeper.BuildConstraintTemplate(gatekeeper.ConstraintTemplateParams{
 		Name:        name,
 		Kind:        kind,
-		Description: "Prohibits hostPID, hostIPC, and hostNetwork (MV1002)",
-		Rego:        mv1002Rego,
+		Description: "Prohibits containers from running as root (MV1004)",
+		Rego:        mv1004Rego,
 		MatchKinds:  gatekeeper.WorkloadKinds,
 		APIGroups:   "*",
 	})

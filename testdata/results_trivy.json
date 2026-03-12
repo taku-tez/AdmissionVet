@@ -1,0 +1,84 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "my-cluster",
+  "ArtifactType": "kubernetes",
+  "Resources": [
+    {
+      "Namespace": "default",
+      "Kind": "Deployment",
+      "Name": "nginx",
+      "Results": [
+        {
+          "Target": "Deployment/nginx",
+          "Class": "config",
+          "Type": "kubernetes",
+          "Misconfigurations": [
+            {
+              "ID": "KSV001",
+              "Title": "Process can elevate its own privileges",
+              "Message": "Container 'nginx' should not allow privilege escalation",
+              "Severity": "HIGH",
+              "Status": "FAIL"
+            },
+            {
+              "ID": "KSV014",
+              "Title": "Root file system is not read-only",
+              "Message": "Container 'nginx' should set readOnlyRootFilesystem to true",
+              "Severity": "LOW",
+              "Status": "FAIL"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Namespace": "monitoring",
+      "Kind": "DaemonSet",
+      "Name": "node-exporter",
+      "Results": [
+        {
+          "Target": "DaemonSet/node-exporter",
+          "Class": "config",
+          "Type": "kubernetes",
+          "Misconfigurations": [
+            {
+              "ID": "KSV008",
+              "Title": "Access to host PID namespace",
+              "Message": "DaemonSet 'node-exporter' should not run with hostPID",
+              "Severity": "HIGH",
+              "Status": "FAIL"
+            },
+            {
+              "ID": "KSV028",
+              "Title": "hostPath volumes present",
+              "Message": "DaemonSet 'node-exporter' uses hostPath volume '/proc'",
+              "Severity": "MEDIUM",
+              "Status": "FAIL"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Namespace": "",
+      "Kind": "ClusterRole",
+      "Name": "developer",
+      "Results": [
+        {
+          "Target": "ClusterRole/developer",
+          "Class": "config",
+          "Type": "kubernetes",
+          "Misconfigurations": [
+            {
+              "ID": "KSV041",
+              "Title": "Do not use wildcard verbs",
+              "Message": "ClusterRole 'developer' uses wildcard verb '*'",
+              "Severity": "HIGH",
+              "Status": "FAIL"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

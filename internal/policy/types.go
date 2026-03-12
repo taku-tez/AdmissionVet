@@ -1,3 +1,14 @@
+// Package policy defines the Generator interface and GeneratedPolicy type used by all
+// rule implementations.
+//
+// Each rule is implemented as a Generator that self-registers via init():
+//
+//	func init() { policy.Register("gatekeeper", &mv1001{}) }
+//
+// cmd/generators.go blank-imports all generator packages to trigger registration before
+// any CLI command runs.
+//
+// Engines: "gatekeeper" (ConstraintTemplate + Constraint) and "kyverno" (ClusterPolicy).
 package policy
 
 import "github.com/AdmissionVet/admissionvet/internal/input"

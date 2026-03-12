@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"sigs.k8s.io/yaml"
@@ -167,6 +168,10 @@ func computeRolloutImpacts(hits []PolicyHit, resources []resourceObject) []Rollo
 					replicas = v
 				case float64:
 					replicas = int(v)
+				case string:
+					if n, err := strconv.Atoi(v); err == nil {
+						replicas = n
+					}
 				}
 			}
 		}
@@ -204,9 +209,13 @@ type policyRule struct {
 type checkFunc func(obj resourceObject) (bool, string)
 
 type resourceObject struct {
-	Kind      string                 `yaml:"kind"`
-	Metadata  map[string]interface{} `yaml:"metadata"`
-	Spec      map[string]interface{} `yaml:"spec"`
+	Kind     string                 `yaml:"kind"`
+	Metadata map[string]interface{} `yaml:"metadata"`
+	Spec     map[string]interface{} `yaml:"spec"`
+	// RBAC resources: rules/roleRef/subjects are top-level fields (not under spec).
+	Rules    []interface{}          `yaml:"rules"`
+	RoleRef  map[string]interface{} `yaml:"roleRef"`
+	Subjects []interface{}          `yaml:"subjects"`
 }
 
 func (r resourceObject) name() string {
@@ -260,8 +269,7 @@ func parsePolicies(data []byte) ([]policyRule, []string, error) {
 	var rules []policyRule
 	var names []string
 
-	docs := bytes.Split(data, []byte("\n---"))
-	for _, raw := range docs {
+	for _, raw := range splitYAMLDocs(data) {
 		raw = bytes.TrimSpace(raw)
 		if len(raw) == 0 {
 			continue
@@ -323,47 +331,62 @@ func gatekeeperRuleFromKind(name, kind string, spec map[string]interface{}) (pol
 // mapPolicyNameToRules maps known policy/constraint names to built-in check functions.
 func mapPolicyNameToRules(name, action string) []policyRule {
 	workloadKinds := []string{"Pod", "Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "Job", "CronJob"}
+	rbacKinds := []string{"ClusterRole", "Role"}
 
 	type entry struct {
 		nameFragment string
 		checks       []checkFunc
+		matchKinds   []string
 	}
 
 	entries := []entry{
 		{
 			nameFragment: "mv1001",
+			matchKinds:   workloadKinds,
 			checks: []checkFunc{func(obj resourceObject) (bool, string) {
 				return checkPrivileged(obj)
 			}},
 		},
 		{
 			nameFragment: "mv1002",
+			matchKinds:   workloadKinds,
 			checks: []checkFunc{func(obj resourceObject) (bool, string) {
 				return checkHostNamespaces(obj)
 			}},
 		},
 		{
 			nameFragment: "mv1003",
+			matchKinds:   workloadKinds,
 			checks: []checkFunc{func(obj resourceObject) (bool, string) {
 				return checkHostPath(obj)
 			}},
 		},
 		{
 			nameFragment: "mv1007",
+			matchKinds:   workloadKinds,
 			checks: []checkFunc{func(obj resourceObject) (bool, string) {
 				return checkReadOnlyRootFS(obj)
 			}},
 		},
 		{
 			nameFragment: "rb1001",
+			matchKinds:   rbacKinds, // ClusterRole/Role only — NOT workloads
 			checks: []checkFunc{func(obj resourceObject) (bool, string) {
 				return checkWildcardVerb(obj)
 			}},
 		},
 		{
 			nameFragment: "rb1002",
+			matchKinds:   rbacKinds, // ClusterRole/Role only — NOT workloads
 			checks: []checkFunc{func(obj resourceObject) (bool, string) {
 				return checkWildcardResource(obj)
+			}},
+		},
+		{
+			nameFragment: "mv2001",
+			matchKinds:   workloadKinds,
+			checks: []checkFunc{func(obj resourceObject) (bool, string) {
+				return checkSecretEnvVars(obj)
 			}},
 		},
 	}
@@ -375,7 +398,7 @@ func mapPolicyNameToRules(name, action string) []policyRule {
 				PolicyName: name,
 				Action:     action,
 				Checks:     e.checks,
-				MatchKinds: workloadKinds,
+				MatchKinds: e.matchKinds,
 			}}
 		}
 	}
@@ -442,12 +465,41 @@ func checkReadOnlyRootFS(obj resourceObject) (bool, string) {
 	return false, ""
 }
 
+var secretEnvPatterns = []string{
+	"PASSWORD", "SECRET", "TOKEN", "KEY", "CREDENTIAL", "PASSWD", "PRIVATE", "API_KEY", "AUTH",
+}
+
+func checkSecretEnvVars(obj resourceObject) (bool, string) {
+	for _, c := range extractContainers(obj) {
+		envs, _ := c["env"].([]interface{})
+		for _, e := range envs {
+			env, ok := e.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			name, _ := env["name"].(string)
+			value, hasValue := env["value"].(string)
+			if !hasValue || value == "" {
+				continue
+			}
+			upper := strings.ToUpper(name)
+			for _, pattern := range secretEnvPatterns {
+				if strings.Contains(upper, pattern) {
+					cname, _ := c["name"].(string)
+					return true, fmt.Sprintf("container '%s' env var '%s' has a literal value that looks like a secret", cname, name)
+				}
+			}
+		}
+	}
+	return false, ""
+}
+
 func checkWildcardVerb(obj resourceObject) (bool, string) {
 	if obj.Kind != "ClusterRole" && obj.Kind != "Role" {
 		return false, ""
 	}
-	rules, _ := obj.Spec["rules"].([]interface{})
-	for _, r := range rules {
+	// rules is a top-level field in ClusterRole/Role, not under spec.
+	for _, r := range obj.Rules {
 		rule, ok := r.(map[string]interface{})
 		if !ok {
 			continue
@@ -466,8 +518,8 @@ func checkWildcardResource(obj resourceObject) (bool, string) {
 	if obj.Kind != "ClusterRole" && obj.Kind != "Role" {
 		return false, ""
 	}
-	rules, _ := obj.Spec["rules"].([]interface{})
-	for _, r := range rules {
+	// rules is a top-level field in ClusterRole/Role, not under spec.
+	for _, r := range obj.Rules {
 		rule, ok := r.(map[string]interface{})
 		if !ok {
 			continue
@@ -508,10 +560,17 @@ func extractContainers(obj resourceObject) []map[string]interface{} {
 	return result
 }
 
+// splitYAMLDocs splits a YAML byte slice on document separators ("---").
+// Handles both "\n---" (mid-file) and documents beginning with "---\n".
+func splitYAMLDocs(data []byte) [][]byte {
+	// Normalize: if the file starts with "---", treat it as a separator.
+	data = bytes.TrimPrefix(data, []byte("---\n"))
+	return bytes.Split(data, []byte("\n---"))
+}
+
 func parseResources(data []byte) ([]resourceObject, error) {
 	var resources []resourceObject
-	docs := bytes.Split(data, []byte("\n---"))
-	for _, raw := range docs {
+	for _, raw := range splitYAMLDocs(data) {
 		raw = bytes.TrimSpace(raw)
 		if len(raw) == 0 {
 			continue

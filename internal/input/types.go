@@ -1,3 +1,12 @@
+// Package input provides the core data types and loaders for security scan results.
+//
+// It auto-detects three input formats:
+//   - Native AdmissionVet JSON ({"violations": [...]})
+//   - Trivy k8s JSON ({"ArtifactType": "kubernetes", "Resources": [...]})
+//   - K8sVet unified JSON ({"results": [...]})
+//
+// Rule IDs from Trivy (KSV*) and K8sVet are normalised to AdmissionVet's canonical
+// format (MV*, RB*, NV*) automatically by LoadFromFile.
 package input
 
 // Severity represents the severity level of a violation.

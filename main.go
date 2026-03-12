@@ -22,7 +22,9 @@ Commands:
   list-policies List available built-in policy presets
   webhook       Validate and test webhook configurations
   psa           Pod Security Admission simulation
-  dryrun        Simulate policy enforcement against existing manifests`,
+  dryrun        Simulate policy enforcement against existing manifests
+  audit         Audit live cluster resources for security violations
+  drift         Detect drift between generated policies and cluster state`,
 }
 
 func main() {
@@ -34,6 +36,8 @@ func main() {
 	rootCmd.AddCommand(cmd.NewDryrunCommand())
 	rootCmd.AddCommand(cmd.NewVersionCommand())
 	rootCmd.AddCommand(cmd.NewRegistryCommand())
+	rootCmd.AddCommand(cmd.NewAuditCommand())
+	rootCmd.AddCommand(cmd.NewDriftCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

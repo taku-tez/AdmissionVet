@@ -1,0 +1,21 @@
+# Example exceptions file for AdmissionVet.
+# Use: admissionvet generate --from results.json --exceptions testdata/exceptions-example.yaml
+exceptions:
+  # CNI requires privileged containers in kube-system
+  - ruleID: MV1001
+    namespace: kube-system
+    reason: "CNI plugin (calico/cilium) requires privileged containers"
+
+  # Legacy app pending migration — readOnlyRootFilesystem not yet set
+  - ruleID: MV1007
+    resource: "Deployment/legacy-app"
+    reason: "Scheduled for migration in Q3 — JIRA: INFRA-4210"
+
+  # Monitoring namespace uses privileged daemonsets (node-exporter, etc.)
+  - namespace: monitoring
+    reason: "Monitoring stack (Prometheus node-exporter) requires host access"
+
+  # Specific RBAC binding known to be intentional
+  - ruleID: RB1003
+    resource: "ClusterRoleBinding/emergency-access"
+    reason: "Break-glass account — reviewed quarterly by security team"

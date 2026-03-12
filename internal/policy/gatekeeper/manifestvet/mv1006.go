@@ -7,20 +7,21 @@ import (
 )
 
 func init() {
-	policy.Register("gatekeeper", &mv1001{})
+	policy.Register("gatekeeper", &mv1006{})
 }
 
-type mv1001 struct{}
+type mv1006 struct{}
 
-func (g *mv1001) RuleID() string { return "MV1001" }
+func (g *mv1006) RuleID() string { return "MV1006" }
 
-const mv1001Rego = `package admissionvet.mv1001
+const mv1006Rego = `package admissionvet.mv1006
 
 violation[{"msg": msg}] {
   c := input_containers[_]
-  # Use object.get to safely handle containers without securityContext
-  object.get(c, ["securityContext", "privileged"], false) == true
-  msg := sprintf("Container '%v' is running as privileged (MV1001)", [c.name])
+  # allowPrivilegeEscalation must be explicitly set to false.
+  # If the field is absent or true, privilege escalation is possible.
+  object.get(c, ["securityContext", "allowPrivilegeEscalation"], true) != false
+  msg := sprintf("Container '%v' does not set allowPrivilegeEscalation: false (MV1006)", [c.name])
 }
 
 input_containers[c] {
@@ -36,15 +37,15 @@ input_containers[c] {
   c := input.review.object.spec.template.spec.initContainers[_]
 }`
 
-func (g *mv1001) Generate(violations []input.Violation, namespace string) (*policy.GeneratedPolicy, error) {
-	name := "mv1001"
-	kind := "Mv1001"
+func (g *mv1006) Generate(violations []input.Violation, namespace string) (*policy.GeneratedPolicy, error) {
+	name := "mv1006"
+	kind := "Mv1006"
 
 	ct, err := gatekeeper.BuildConstraintTemplate(gatekeeper.ConstraintTemplateParams{
 		Name:        name,
 		Kind:        kind,
-		Description: "Prohibits privileged containers (MV1001)",
-		Rego:        mv1001Rego,
+		Description: "Requires allowPrivilegeEscalation: false on all containers (MV1006)",
+		Rego:        mv1006Rego,
 		MatchKinds:  gatekeeper.WorkloadKinds,
 		APIGroups:   "*",
 	})
