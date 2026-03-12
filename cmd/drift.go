@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -17,6 +18,7 @@ func NewDriftCommand() *cobra.Command {
 		engine     string
 		kubeconfig string
 		context    string
+		format     string
 	)
 
 	cmd := &cobra.Command{
@@ -31,9 +33,10 @@ Missing: Policy is in the cluster but not in the local output directory.
 
 Examples:
   admissionvet drift --output output/ --engine gatekeeper
-  admissionvet drift --output output/ --engine kyverno --kubeconfig ~/.kube/prod.yaml`,
+  admissionvet drift --output output/ --engine kyverno --kubeconfig ~/.kube/prod.yaml
+  admissionvet drift --output output/ --format json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDrift(outputDir, engine, audit.Options{
+			return runDrift(outputDir, engine, format, audit.Options{
 				Kubeconfig: kubeconfig,
 				Context:    context,
 			})
@@ -44,11 +47,12 @@ Examples:
 	cmd.Flags().StringVar(&engine, "engine", "gatekeeper", "Policy engine: gatekeeper|kyverno")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig file")
 	cmd.Flags().StringVar(&context, "context", "", "Kubeconfig context to use")
+	cmd.Flags().StringVar(&format, "format", "table", "Output format: table|json")
 
 	return cmd
 }
 
-func runDrift(outputDir, engine string, opts audit.Options) error {
+func runDrift(outputDir, engine, format string, opts audit.Options) error {
 	if err := validateEngine(engine); err != nil {
 		return err
 	}
@@ -64,31 +68,28 @@ func runDrift(outputDir, engine string, opts audit.Options) error {
 		return err
 	}
 
+	switch format {
+	case "json":
+		return printDriftJSON(result)
+	default:
+		return printDriftTable(outputDir, result)
+	}
+}
+
+func printDriftTable(outputDir string, result *audit.DriftResult) error {
 	if len(result.Findings) == 0 {
 		fmt.Println("No drift detected. Deployed policies match the local output directory.")
 		return nil
 	}
 
-	var newCount, changedCount, missingCount int
-	for _, f := range result.Findings {
-		switch f.Status {
-		case audit.DriftStatusNew:
-			newCount++
-		case audit.DriftStatusChanged:
-			changedCount++
-		case audit.DriftStatusMissing:
-			missingCount++
-		}
-	}
-	fmt.Printf("Drift detected: %d new, %d changed, %d missing\n\n",
-		newCount, changedCount, missingCount)
+	s := result.Summary()
+	fmt.Printf("Drift detected: %d new, %d changed, %d missing\n\n", s.New, s.Changed, s.Missing)
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "STATUS\tPOLICY\tMESSAGE")
 	fmt.Fprintln(w, "------\t------\t-------")
 	for _, f := range result.Findings {
-		fmt.Fprintf(w, "%s\t%s\t%s\n",
-			statusIcon(f.Status), f.PolicyName, f.Message)
+		fmt.Fprintf(w, "%s\t%s\t%s\n", statusIcon(f.Status), f.PolicyName, f.Message)
 	}
 	w.Flush()
 
@@ -96,6 +97,26 @@ func runDrift(outputDir, engine string, opts audit.Options) error {
 	fmt.Println("To apply missing/changed policies, run: kubectl apply -f " + outputDir + "/")
 
 	return nil
+}
+
+type driftJSONOutput struct {
+	Engine   string             `json:"engine"`
+	Summary  audit.DriftSummary `json:"summary"`
+	Findings []audit.DriftFinding `json:"findings"`
+}
+
+func printDriftJSON(result *audit.DriftResult) error {
+	out := driftJSONOutput{
+		Engine:   result.Engine,
+		Summary:  result.Summary(),
+		Findings: result.Findings,
+	}
+	if out.Findings == nil {
+		out.Findings = []audit.DriftFinding{}
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
 }
 
 func statusIcon(s audit.DriftStatus) string {

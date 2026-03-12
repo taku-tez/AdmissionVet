@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -140,6 +141,63 @@ func TestDriftResult_NoDrift(t *testing.T) {
 	result := &DriftResult{Engine: "gatekeeper"}
 	if len(result.Findings) != 0 {
 		t.Errorf("want 0 findings, got %d", len(result.Findings))
+	}
+}
+
+func TestDriftResult_Summary(t *testing.T) {
+	result := &DriftResult{
+		Engine: "gatekeeper",
+		Findings: []DriftFinding{
+			{PolicyName: "mv1001", Status: DriftStatusNew, Message: "not deployed"},
+			{PolicyName: "mv1002", Status: DriftStatusChanged, Message: "spec differs"},
+			{PolicyName: "mv1003", Status: DriftStatusMissing, Message: "not local"},
+			{PolicyName: "mv1004", Status: DriftStatusNew, Message: "not deployed"},
+		},
+	}
+	s := result.Summary()
+	if s.Total != 4 {
+		t.Errorf("want Total=4, got %d", s.Total)
+	}
+	if s.New != 2 {
+		t.Errorf("want New=2, got %d", s.New)
+	}
+	if s.Changed != 1 {
+		t.Errorf("want Changed=1, got %d", s.Changed)
+	}
+	if s.Missing != 1 {
+		t.Errorf("want Missing=1, got %d", s.Missing)
+	}
+}
+
+func TestDriftFinding_JSONTags(t *testing.T) {
+	import_json := func(f DriftFinding) map[string]any {
+		// We test the JSON shape by encoding and checking field names.
+		data, err := json.Marshal(f)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(data, &m); err != nil {
+			t.Fatalf("json.Unmarshal: %v", err)
+		}
+		return m
+	}
+	f := DriftFinding{
+		PolicyName: "mv1001-constraint",
+		Status:     DriftStatusChanged,
+		Message:    "spec differs",
+	}
+	m := import_json(f)
+	for _, key := range []string{"policy_name", "status", "message"} {
+		if _, ok := m[key]; !ok {
+			t.Errorf("JSON output missing key %q", key)
+		}
+	}
+	if m["policy_name"] != "mv1001-constraint" {
+		t.Errorf("policy_name: got %v", m["policy_name"])
+	}
+	if m["status"] != "changed" {
+		t.Errorf("status: got %v", m["status"])
 	}
 }
 

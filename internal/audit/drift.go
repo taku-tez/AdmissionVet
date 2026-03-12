@@ -13,10 +13,10 @@ import (
 // DriftFinding describes a policy that differs between the generated output
 // directory and what is currently deployed in the cluster.
 type DriftFinding struct {
-	PolicyName string
-	Kind       string // ConstraintTemplate, Constraint, ClusterPolicy, NetworkPolicy
-	Status     DriftStatus
-	Message    string
+	PolicyName string      `json:"policy_name"`
+	Kind       string      `json:"kind,omitempty"` // ConstraintTemplate, Constraint, ClusterPolicy, NetworkPolicy
+	Status     DriftStatus `json:"status"`
+	Message    string      `json:"message"`
 }
 
 // DriftStatus describes the type of drift.
@@ -28,10 +28,34 @@ const (
 	DriftStatusChanged DriftStatus = "changed" // present in both but different spec
 )
 
+// DriftSummary holds per-status counts for a drift result.
+type DriftSummary struct {
+	Total   int `json:"total"`
+	New     int `json:"new"`
+	Changed int `json:"changed"`
+	Missing int `json:"missing"`
+}
+
 // DriftResult is the full output of a drift check.
 type DriftResult struct {
-	Engine   string
-	Findings []DriftFinding
+	Engine   string        `json:"engine"`
+	Findings []DriftFinding `json:"findings"`
+}
+
+// Summary returns per-status counts for the result.
+func (r *DriftResult) Summary() DriftSummary {
+	s := DriftSummary{Total: len(r.Findings)}
+	for _, f := range r.Findings {
+		switch f.Status {
+		case DriftStatusNew:
+			s.New++
+		case DriftStatusChanged:
+			s.Changed++
+		case DriftStatusMissing:
+			s.Missing++
+		}
+	}
+	return s
 }
 
 // CheckDrift compares policies in outputDir against what is deployed in the cluster.

@@ -153,10 +153,11 @@ admissionvet drift [flags]
 |------|---------|-------------|
 | `--output / -o` | `output` | Directory containing local policy files |
 | `--engine` | `gatekeeper` | `gatekeeper` or `kyverno` |
+| `--format` | `table` | Output format: `table` or `json` |
 | `--kubeconfig` | `~/.kube/config` | Path to kubeconfig |
 | `--context` | *(current)* | Kubernetes context to use |
 
-**Output:**
+**Table output (default):**
 
 ```
 Drift detected: 1 new, 0 changed, 1 missing
@@ -165,6 +166,32 @@ STATUS     POLICY               MESSAGE
 ------     ------               -------
 [NEW]      mv1004-constraint    generated locally but not deployed to cluster
 [MISSING]  rb1003-constraint    deployed in cluster but not in output directory
+```
+
+**JSON output (`--format json`):**
+
+```json
+{
+  "engine": "gatekeeper",
+  "summary": {
+    "total": 2,
+    "new": 1,
+    "changed": 0,
+    "missing": 1
+  },
+  "findings": [
+    {
+      "policy_name": "mv1004-constraint",
+      "status": "new",
+      "message": "policy is generated locally but not deployed to the cluster"
+    },
+    {
+      "policy_name": "rb1003-constraint",
+      "status": "missing",
+      "message": "policy is deployed in cluster but not present in output directory"
+    }
+  ]
+}
 ```
 
 ---
