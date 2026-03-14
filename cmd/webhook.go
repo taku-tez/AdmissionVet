@@ -28,6 +28,7 @@ func newWebhookValidateCommand() *cobra.Command {
 	var (
 		fromFile string
 		cluster  bool
+		context  string
 		severity string
 		output   string
 	)
@@ -45,22 +46,24 @@ func newWebhookValidateCommand() *cobra.Command {
 Examples:
   admissionvet webhook validate --from webhook.yaml
   admissionvet webhook validate --cluster
+  admissionvet webhook validate --cluster --context my-context
   admissionvet webhook validate --cluster --severity high
   admissionvet webhook validate --cluster --output json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWebhookValidate(fromFile, cluster, severity, output)
+			return runWebhookValidate(fromFile, cluster, context, severity, output)
 		},
 	}
 
 	cmd.Flags().StringVarP(&fromFile, "from", "f", "", "Path to webhook configuration YAML")
 	cmd.Flags().BoolVar(&cluster, "cluster", false, "Fetch configurations from the current cluster via kubectl")
+	cmd.Flags().StringVar(&context, "context", "", "Kubeconfig context to use (default: current context)")
 	cmd.Flags().StringVar(&severity, "severity", "", "Filter findings: critical|high|medium|low|info")
 	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text|json")
 
 	return cmd
 }
 
-func runWebhookValidate(fromFile string, cluster bool, severity string, output string) error {
+func runWebhookValidate(fromFile string, cluster bool, context string, severity string, output string) error {
 	var findings []webhook.Finding
 	var err error
 
@@ -69,7 +72,7 @@ func runWebhookValidate(fromFile string, cluster bool, severity string, output s
 		if output != "json" {
 			fmt.Fprintln(os.Stderr, "Fetching webhook configurations from cluster...")
 		}
-		findings, err = webhook.ValidateCluster()
+		findings, err = webhook.ValidateCluster(context)
 	case fromFile != "":
 		findings, err = webhook.ValidateFile(fromFile)
 	default:
