@@ -26,11 +26,16 @@ func ValidateFile(path string) ([]Finding, error) {
 }
 
 // ValidateCluster fetches webhook configurations from the cluster via kubectl.
-func ValidateCluster() ([]Finding, error) {
+// context optionally specifies a kubeconfig context; pass "" to use the current context.
+func ValidateCluster(context string) ([]Finding, error) {
 	var findings []Finding
 
 	for _, kind := range []string{"validatingwebhookconfigurations", "mutatingwebhookconfigurations"} {
-		out, err := exec.Command("kubectl", "get", kind, "-o", "yaml").Output()
+		args := []string{"get", kind, "-o", "yaml"}
+		if context != "" {
+			args = append([]string{"--context", context}, args...)
+		}
+		out, err := exec.Command("kubectl", args...).Output()
 		if err != nil {
 			return nil, fmt.Errorf("kubectl get %s: %w", kind, err)
 		}
